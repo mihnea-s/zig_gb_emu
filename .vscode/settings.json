@@ -1,0 +1,4 @@
+{
+    "zigLanguageClient.path": "zls",
+    "nixEnvSelector.nixFile": "${workspaceRoot}/shell.nix",
+}
