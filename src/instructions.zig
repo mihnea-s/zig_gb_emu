@@ -85,7 +85,7 @@ fn instruction(
 
 pub fn instructions_details(ix: u8) ?Instruction {
     return switch (ix) {
-        // 0x00 Prefixed instructions
+        // 0x00 instructions
         0x00 => instruction("nop", 1, 4),
         0x01 => instruction("ld (BC) %XX", 3, 12),
         0x02 => instruction("ld (BC) A", 1, 8),
@@ -103,7 +103,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x0E => instruction("ld C %X", 2, 8),
         0x0F => instruction("rrca", 1, 4),
 
-        // 0x10 Prefixed instructions
+        // 0x10 instructions
         0x10 => instruction("stop", 1, 4),
         0x11 => instruction("ld DE %XX", 3, 12),
         0x12 => instruction("ld (DE) A", 1, 8),
@@ -121,7 +121,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x1E => instruction("ld E %X", 2, 8),
         0x1F => instruction("rra", 1, 4),
 
-        // 0x20 Prefixed instructions
+        // 0x20 instructions
         0x20 => instruction("jr NZ %Xi", 2, (8 + 12) / 2),
         0x21 => instruction("ld HL %XX", 3, 12),
         0x22 => instruction("ldi (HL) A", 1, 8),
@@ -139,7 +139,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x2E => instruction("ld L %X", 2, 8),
         0x2F => instruction("cpl", 1, 4),
 
-        // 0x30 Prefixed instructions
+        // 0x30 instructions
         0x30 => instruction("jr NC %Xi", 2, (8 + 12) / 2),
         0x31 => instruction("ld SP %XX", 3, 12),
         0x32 => instruction("ldd (HL) A", 1, 8),
@@ -157,7 +157,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x3E => instruction("ld A %X", 2, 8),
         0x3F => instruction("ccf", 1, 4),
 
-        // 0x40 Prefixed instructions
+        // 0x40 instructions
         0x40 => instruction("ld B B", 1, 4),
         0x41 => instruction("ld B C", 1, 4),
         0x42 => instruction("ld B D", 1, 4),
@@ -175,7 +175,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x4E => instruction("ld C (HL)", 1, 8),
         0x4F => instruction("ld C A", 1, 4),
 
-        // 0x50 Prefixed instructions
+        // 0x50 instructions
         0x50 => instruction("ld D B", 1, 4),
         0x51 => instruction("ld D C", 1, 4),
         0x52 => instruction("ld D D", 1, 4),
@@ -193,7 +193,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x5E => instruction("ld E (HL)", 1, 8),
         0x5F => instruction("ld E A", 1, 4),
 
-        // 0x60 Prefixed instructions
+        // 0x60 instructions
         0x60 => instruction("ld H B", 1, 4),
         0x61 => instruction("ld H C", 1, 4),
         0x62 => instruction("ld H D", 1, 4),
@@ -211,7 +211,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x6E => instruction("ld L (HL)", 1, 8),
         0x6F => instruction("ld L A", 1, 4),
 
-        // 0x70 Prefixed instructions
+        // 0x70 instructions
         0x70 => instruction("ld (HL) B", 1, 4),
         0x71 => instruction("ld (HL) C", 1, 4),
         0x72 => instruction("ld (HL) D", 1, 4),
@@ -229,7 +229,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x7E => instruction("ld A (HL)", 1, 8),
         0x7F => instruction("ld A A", 1, 4),
 
-        // 0x80 Prefixed instructions
+        // 0x80 instructions
         0x80 => null,
         0x81 => null,
         0x82 => null,
@@ -247,7 +247,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x8E => null,
         0x8F => null,
 
-        // 0x90 Prefixed instructions
+        // 0x90 instructions
         0x90 => instruction("sub A B", 1, 4),
         0x91 => null,
         0x92 => null,
@@ -265,7 +265,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x9E => null,
         0x9F => null,
 
-        // 0xA0 Prefixed instructions
+        // 0xA0 instructions
         0xA0 => null,
         0xA1 => null,
         0xA2 => null,
@@ -283,7 +283,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xAE => null,
         0xAF => instruction("xor A A", 1, 4),
 
-        // 0xB0 Prefixed instructions
+        // 0xB0 instructions
         0xB0 => null,
         0xB1 => null,
         0xB2 => null,
@@ -301,7 +301,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xBE => null,
         0xBF => null,
 
-        // 0xC0 Prefixed instructions
+        // 0xC0 instructions
         0xC0 => instruction("ret NZ", 1, 14),
         0xC1 => instruction("pop BC", 1, 12),
         0xC2 => instruction("jp NZ %XX", 3, 14),
@@ -319,7 +319,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xCE => instruction("adc A %X", 2, 8),
         0xCF => instruction("rst 08h", 1, 16),
 
-        // 0xD0 Prefixed instructions
+        // 0xD0 instructions
         0xD0 => null,
         0xD1 => null,
         0xD2 => null,
@@ -337,7 +337,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xDE => null,
         0xDF => null,
 
-        // 0xE0 Prefixed instructions
+        // 0xE0 instructions
         0xE0 => instruction("ld ($FF00 + %X) A", 2, 12),
         0xE1 => null,
         0xE2 => instruction("ld ($FF00 + C) A", 1, 8),
@@ -355,7 +355,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xEE => null,
         0xEF => null,
 
-        // 0xF0 Prefixed instructions
+        // 0xF0 instructions
         0xF0 => instruction("ld A ($FF00 + %X)", 2, 12),
         0xF1 => null,
         0xF2 => null,
@@ -377,10 +377,276 @@ pub fn instructions_details(ix: u8) ?Instruction {
 
 pub fn prefixed_instructions_details(ix: u8) ?Instruction {
     return switch (ix) {
+        0x00 => instruction("rlc B", 1, 8),
+        0x01 => instruction("rlc C", 1, 8),
+        0x02 => instruction("rlc D", 1, 8),
+        0x03 => instruction("rlc E", 1, 8),
+        0x04 => instruction("rlc H", 1, 8),
+        0x05 => instruction("rlc L", 1, 8),
+        0x06 => instruction("rlc (HL)", 1, 16),
+        0x07 => instruction("rlc A", 1, 8),
+        0x08 => instruction("rrc B", 1, 8),
+        0x09 => instruction("rrc C", 1, 8),
+        0x0A => instruction("rrc D", 1, 8),
+        0x0B => instruction("rrc E", 1, 8),
+        0x0C => instruction("rrc H", 1, 8),
+        0x0D => instruction("rrc L", 1, 8),
+        0x0E => instruction("rrc (HL)", 1, 16),
+        0x0F => instruction("rrc A", 1, 8),
+
+        0x10 => instruction("rl B", 1, 8),
         0x11 => instruction("rl C", 1, 8),
+        0x12 => instruction("rl D", 1, 8),
+        0x13 => instruction("rl E", 1, 8),
+        0x14 => instruction("rl H", 1, 8),
+        0x15 => instruction("rl L", 1, 8),
+        0x16 => instruction("rl (HL)", 1, 16),
+        0x17 => instruction("rl A", 1, 8),
+        0x18 => instruction("rr B", 1, 8),
+        0x19 => instruction("rr C", 1, 8),
+        0x1A => instruction("rr D", 1, 8),
+        0x1B => instruction("rr E", 1, 8),
+        0x1C => instruction("rr H", 1, 8),
+        0x1D => instruction("rr L", 1, 8),
+        0x1E => instruction("rr (HL)", 1, 16),
+        0x1F => instruction("rr A", 1, 8),
 
+        0x20 => instruction("sla B", 1, 8),
+        0x21 => instruction("sla C", 1, 8),
+        0x22 => instruction("sla D", 1, 8),
+        0x23 => instruction("sla E", 1, 8),
+        0x24 => instruction("sla H", 1, 8),
+        0x25 => instruction("sla L", 1, 8),
+        0x26 => instruction("sla (HL)", 1, 16),
+        0x27 => instruction("sla A", 1, 8),
+        0x28 => instruction("sra B", 1, 8),
+        0x29 => instruction("sra C", 1, 8),
+        0x2A => instruction("sra D", 1, 8),
+        0x2B => instruction("sra E", 1, 8),
+        0x2C => instruction("sra H", 1, 8),
+        0x2D => instruction("sra L", 1, 8),
+        0x2E => instruction("sra (HL)", 1, 16),
+        0x2F => instruction("sra A", 1, 8),
+
+        0x30 => instruction("swap B", 1, 8),
+        0x31 => instruction("swap C", 1, 8),
+        0x32 => instruction("swap D", 1, 8),
+        0x33 => instruction("swap E", 1, 8),
+        0x34 => instruction("swap H", 1, 8),
+        0x35 => instruction("swap L", 1, 8),
+        0x36 => instruction("swap (HL)", 1, 16),
+        0x37 => instruction("swap A", 1, 8),
+        0x38 => instruction("srl B", 1, 8),
+        0x39 => instruction("srl C", 1, 8),
+        0x3A => instruction("srl D", 1, 8),
+        0x3B => instruction("srl E", 1, 8),
+        0x3C => instruction("srl H", 1, 8),
+        0x3D => instruction("srl L", 1, 8),
+        0x3E => instruction("srl (HL)", 1, 16),
+        0x3F => instruction("srl A", 1, 8),
+
+        0x40 => instruction("bit 0 B", 1, 8),
+        0x41 => instruction("bit 0 C", 1, 8),
+        0x42 => instruction("bit 0 D", 1, 8),
+        0x43 => instruction("bit 0 E", 1, 8),
+        0x44 => instruction("bit 0 H", 1, 8),
+        0x45 => instruction("bit 0 L", 1, 8),
+        0x46 => instruction("bit 0 (HL)", 1, 16),
+        0x47 => instruction("bit 0 A", 1, 8),
+        0x48 => instruction("bit 1 B", 1, 8),
+        0x49 => instruction("bit 1 C", 1, 8),
+        0x4A => instruction("bit 1 D", 1, 8),
+        0x4B => instruction("bit 1 E", 1, 8),
+        0x4C => instruction("bit 1 H", 1, 8),
+        0x4D => instruction("bit 1 L", 1, 8),
+        0x4E => instruction("bit 1 (HL)", 1, 16),
+        0x4F => instruction("bit 1 A", 1, 8),
+
+        0x50 => instruction("bit 2 B", 1, 8),
+        0x51 => instruction("bit 2 C", 1, 8),
+        0x52 => instruction("bit 2 D", 1, 8),
+        0x53 => instruction("bit 2 E", 1, 8),
+        0x54 => instruction("bit 2 H", 1, 8),
+        0x55 => instruction("bit 2 L", 1, 8),
+        0x56 => instruction("bit 2 (HL)", 1, 16),
+        0x57 => instruction("bit 2 A", 1, 8),
+        0x58 => instruction("bit 3 B", 1, 8),
+        0x59 => instruction("bit 3 C", 1, 8),
+        0x5A => instruction("bit 3 D", 1, 8),
+        0x5B => instruction("bit 3 E", 1, 8),
+        0x5C => instruction("bit 3 H", 1, 8),
+        0x5D => instruction("bit 3 L", 1, 8),
+        0x5E => instruction("bit 3 (HL)", 1, 16),
+        0x5F => instruction("bit 3 A", 1, 8),
+
+        0x60 => instruction("bit 4 B", 1, 8),
+        0x61 => instruction("bit 4 C", 1, 8),
+        0x62 => instruction("bit 4 D", 1, 8),
+        0x63 => instruction("bit 4 E", 1, 8),
+        0x64 => instruction("bit 4 H", 1, 8),
+        0x65 => instruction("bit 4 L", 1, 8),
+        0x66 => instruction("bit 4 (HL)", 1, 16),
+        0x67 => instruction("bit 4 A", 1, 8),
+        0x68 => instruction("bit 5 B", 1, 8),
+        0x69 => instruction("bit 5 C", 1, 8),
+        0x6A => instruction("bit 5 D", 1, 8),
+        0x6B => instruction("bit 5 E", 1, 8),
+        0x6C => instruction("bit 5 H", 1, 8),
+        0x6D => instruction("bit 5 L", 1, 8),
+        0x6E => instruction("bit 5 (HL)", 1, 16),
+        0x6F => instruction("bit 5 A", 1, 8),
+
+        0x70 => instruction("bit 6 B", 1, 8),
+        0x71 => instruction("bit 6 C", 1, 8),
+        0x72 => instruction("bit 6 D", 1, 8),
+        0x73 => instruction("bit 6 E", 1, 8),
+        0x74 => instruction("bit 6 H", 1, 8),
+        0x75 => instruction("bit 6 L", 1, 8),
+        0x76 => instruction("bit 6 (HL)", 1, 16),
+        0x77 => instruction("bit 6 A", 1, 8),
+        0x78 => instruction("bit 7 B", 1, 8),
+        0x79 => instruction("bit 7 C", 1, 8),
+        0x7A => instruction("bit 7 D", 1, 8),
+        0x7B => instruction("bit 7 E", 1, 8),
         0x7C => instruction("bit 7 H", 1, 8),
+        0x7D => instruction("bit 7 L", 1, 8),
+        0x7E => instruction("bit 7 (HL)", 1, 16),
+        0x7F => instruction("bit 7 A", 1, 8),
 
-        else => null,
+        0x80 => instruction("res 0 B", 1, 8),
+        0x81 => instruction("res 0 C", 1, 8),
+        0x82 => instruction("res 0 D", 1, 8),
+        0x83 => instruction("res 0 E", 1, 8),
+        0x84 => instruction("res 0 H", 1, 8),
+        0x85 => instruction("res 0 L", 1, 8),
+        0x86 => instruction("res 0 (HL)", 1, 16),
+        0x87 => instruction("res 0 A", 1, 8),
+        0x88 => instruction("res 1 B", 1, 8),
+        0x89 => instruction("res 1 C", 1, 8),
+        0x8A => instruction("res 1 D", 1, 8),
+        0x8B => instruction("res 1 E", 1, 8),
+        0x8C => instruction("res 1 H", 1, 8),
+        0x8D => instruction("res 1 L", 1, 8),
+        0x8E => instruction("res 1 (HL)", 1, 16),
+        0x8F => instruction("res 1 A", 1, 8),
+
+        0x90 => instruction("res 2 B", 1, 8),
+        0x91 => instruction("res 2 C", 1, 8),
+        0x92 => instruction("res 2 D", 1, 8),
+        0x93 => instruction("res 2 E", 1, 8),
+        0x94 => instruction("res 2 H", 1, 8),
+        0x95 => instruction("res 2 L", 1, 8),
+        0x96 => instruction("res 2 (HL)", 1, 16),
+        0x97 => instruction("res 2 A", 1, 8),
+        0x98 => instruction("res 3 B", 1, 8),
+        0x99 => instruction("res 3 C", 1, 8),
+        0x9A => instruction("res 3 D", 1, 8),
+        0x9B => instruction("res 3 E", 1, 8),
+        0x9C => instruction("res 3 H", 1, 8),
+        0x9D => instruction("res 3 L", 1, 8),
+        0x9E => instruction("res 3 (HL)", 1, 16),
+        0x9F => instruction("res 3 A", 1, 8),
+
+        0xA0 => instruction("res 4 B", 1, 8),
+        0xA1 => instruction("res 4 C", 1, 8),
+        0xA2 => instruction("res 4 D", 1, 8),
+        0xA3 => instruction("res 4 E", 1, 8),
+        0xA4 => instruction("res 4 H", 1, 8),
+        0xA5 => instruction("res 4 L", 1, 8),
+        0xA6 => instruction("res 4 (HL)", 1, 16),
+        0xA7 => instruction("res 4 A", 1, 8),
+        0xA8 => instruction("res 5 B", 1, 8),
+        0xA9 => instruction("res 5 C", 1, 8),
+        0xAA => instruction("res 5 D", 1, 8),
+        0xAB => instruction("res 5 E", 1, 8),
+        0xAC => instruction("res 5 H", 1, 8),
+        0xAD => instruction("res 5 L", 1, 8),
+        0xAE => instruction("res 5 (HL)", 1, 16),
+        0xAF => instruction("res 5 A", 1, 8),
+
+        0xB0 => instruction("res 6 B", 1, 8),
+        0xB1 => instruction("res 6 C", 1, 8),
+        0xB2 => instruction("res 6 D", 1, 8),
+        0xB3 => instruction("res 6 E", 1, 8),
+        0xB4 => instruction("res 6 H", 1, 8),
+        0xB5 => instruction("res 6 L", 1, 8),
+        0xB6 => instruction("res 6 (HL)", 1, 16),
+        0xB7 => instruction("res 6 A", 1, 8),
+        0xB8 => instruction("res 7 B", 1, 8),
+        0xB9 => instruction("res 7 C", 1, 8),
+        0xBA => instruction("res 7 D", 1, 8),
+        0xBB => instruction("res 7 E", 1, 8),
+        0xBC => instruction("res 7 H", 1, 8),
+        0xBD => instruction("res 7 L", 1, 8),
+        0xBE => instruction("res 7 (HL)", 1, 16),
+        0xBF => instruction("res 7 A", 1, 8),
+
+        0xC0 => instruction("set 0 B", 1, 8),
+        0xC1 => instruction("set 0 C", 1, 8),
+        0xC2 => instruction("set 0 D", 1, 8),
+        0xC3 => instruction("set 0 E", 1, 8),
+        0xC4 => instruction("set 0 H", 1, 8),
+        0xC5 => instruction("set 0 L", 1, 8),
+        0xC6 => instruction("set 0 (HL)", 1, 16),
+        0xC7 => instruction("set 0 A", 1, 8),
+        0xC8 => instruction("set 1 B", 1, 8),
+        0xC9 => instruction("set 1 C", 1, 8),
+        0xCA => instruction("set 1 D", 1, 8),
+        0xCB => instruction("set 1 E", 1, 8),
+        0xCC => instruction("set 1 H", 1, 8),
+        0xCD => instruction("set 1 L", 1, 8),
+        0xCE => instruction("set 1 (HL)", 1, 16),
+        0xCF => instruction("set 1 A", 1, 8),
+
+        0xD0 => instruction("set 2 B", 1, 8),
+        0xD1 => instruction("set 2 C", 1, 8),
+        0xD2 => instruction("set 2 D", 1, 8),
+        0xD3 => instruction("set 2 E", 1, 8),
+        0xD4 => instruction("set 2 H", 1, 8),
+        0xD5 => instruction("set 2 L", 1, 8),
+        0xD6 => instruction("set 2 (HL)", 1, 16),
+        0xD7 => instruction("set 2 A", 1, 8),
+        0xD8 => instruction("set 3 B", 1, 8),
+        0xD9 => instruction("set 3 C", 1, 8),
+        0xDA => instruction("set 3 D", 1, 8),
+        0xDB => instruction("set 3 E", 1, 8),
+        0xDC => instruction("set 3 H", 1, 8),
+        0xDD => instruction("set 3 L", 1, 8),
+        0xDE => instruction("set 3 (HL)", 1, 16),
+        0xDF => instruction("set 3 A", 1, 8),
+
+        0xE0 => instruction("set 4 B", 1, 8),
+        0xE1 => instruction("set 4 C", 1, 8),
+        0xE2 => instruction("set 4 D", 1, 8),
+        0xE3 => instruction("set 4 E", 1, 8),
+        0xE4 => instruction("set 4 H", 1, 8),
+        0xE5 => instruction("set 4 L", 1, 8),
+        0xE6 => instruction("set 4 (HL)", 1, 16),
+        0xE7 => instruction("set 4 A", 1, 8),
+        0xE8 => instruction("set 5 B", 1, 8),
+        0xE9 => instruction("set 5 C", 1, 8),
+        0xEA => instruction("set 5 D", 1, 8),
+        0xEB => instruction("set 5 E", 1, 8),
+        0xEC => instruction("set 5 H", 1, 8),
+        0xED => instruction("set 5 L", 1, 8),
+        0xEE => instruction("set 5 (HL)", 1, 16),
+        0xEF => instruction("set 5 A", 1, 8),
+
+        0xF0 => instruction("set 6 B", 1, 8),
+        0xF1 => instruction("set 6 C", 1, 8),
+        0xF2 => instruction("set 6 D", 1, 8),
+        0xF3 => instruction("set 6 E", 1, 8),
+        0xF4 => instruction("set 6 H", 1, 8),
+        0xF5 => instruction("set 6 L", 1, 8),
+        0xF6 => instruction("set 6 (HL)", 1, 16),
+        0xF7 => instruction("set 6 A", 1, 8),
+        0xF8 => instruction("set 7 B", 1, 8),
+        0xF9 => instruction("set 7 C", 1, 8),
+        0xFA => instruction("set 7 D", 1, 8),
+        0xFB => instruction("set 7 E", 1, 8),
+        0xFC => instruction("set 7 H", 1, 8),
+        0xFD => instruction("set 7 L", 1, 8),
+        0xFE => instruction("set 7 (HL)", 1, 16),
+        0xFF => instruction("set 7 A", 1, 8),
     };
 }
