@@ -1,86 +1,66 @@
 const std = @import("std");
 
-pub const system_font = [_]u8{
-    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-    0x20, 0x60, 0x20, 0x20, 0x70, // 1
-    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
-};
+pub const BootRom = @embedFile("roms/dmg_boot.bin")[0..];
+
+pub const PkmnBlue = @embedFile("roms/pkmn_blue.gb")[0..];
+
+pub const Tile = [16]u8;
 
 pub const Memory = struct {
     const Self = @This();
 
-    const MemorySize = 4096;
-    const VariablesSize = 0x10;
+    const MemorySize = 0xFFFF + 1;
+    const InterruptAddr = 0xFFFF;
 
-    const StackSize = 0x30;
-    const StackCapacity = StackSize / 2;
+    const RomStart = 0x0000;
+    const RomEnd = 0x3FFF;
+    const RomSize = RomEnd - RomStart;
 
-    const StackStart = 0x00;
-    const StackEnd = StackStart + StackSize;
+    const VideoStart = 0x8000;
+    const VideoEnd = 0x9FFF;
+    const VideoSize = VideoEnd - VideoStart;
 
-    const VariablesStart = StackEnd;
-    const VariablesEnd = VariablesStart + VariablesSize;
+    const SprTableStart = 0xFE00;
+    const SprTableEnd = 0xFE9F;
+    const SprTableSize = SprTableEnd - SprTableStart;
 
-    const FontStart = VariablesEnd;
-    const FontEnd = FontStart + system_font.len;
+    const IOStart = 0xFF00;
+    const IOEnd = 0xFF7F;
+    const IOSize = IOEnd - IOStart;
 
-    // Games are loaded at 0x200
-    const RomStart = 0x200;
+    const HighStart = 0xFF80;
+    const HighEnd = 0xFFFE;
+    const HighSize = HighEnd - HighStart;
 
-    instruction: u16,
-    program_counter: u16,
-
-    // Other Registers
-    delay_timer: u8,
-    sound_timer: u8,
-    variable: *[VariablesSize]u8,
-
-    // Stack pointer into memory
-    stack_size: u8,
-    stack: *align(1) [StackCapacity]u16,
-
-    // Buffer to hold all memory
     buffer: *[MemorySize]u8,
+    interrupts: *u8,
     allocator: *std.mem.Allocator,
+
+    rom: *[RomSize]u8,
+    video: *[VideoSize]u8,
+    sprite_table: *[SprTableSize]u8,
+    input_output: *[IOSize]u8,
+    high: *[HighSize]u8,
 
     pub fn init(allocator: *std.mem.Allocator) !Self {
         const buffer = try allocator.alloc(u8, MemorySize);
 
-        const stack = std.mem.bytesAsSlice(
-            u16,
-            buffer[Memory.StackStart..Memory.StackEnd],
-        )[0..StackCapacity];
+        // Zero initialise memory buffer
+        for (buffer) |*buf_byte| buf_byte.* = 0;
 
-        const variable = buffer[Memory.VariablesStart..Memory.VariablesEnd];
-
-        std.mem.copy(u8, buffer[FontStart..FontEnd], &system_font);
+        // Set interrupt register pointer
+        const interrupts = &buffer[InterruptAddr];
 
         return Self{
-            .instruction = 0x00,
-            .program_counter = 0x00,
-
-            .delay_timer = 0x00,
-            .sound_timer = 0x00,
-            .variable = variable,
-
-            .stack = stack,
-            .stack_size = 0,
-
             .buffer = buffer[0..MemorySize],
             .allocator = allocator,
+            .interrupts = interrupts,
+
+            .rom = buffer[RomStart..RomEnd],
+            .video = buffer[VideoStart..VideoEnd],
+            .sprite_table = buffer[SprTableStart..SprTableEnd],
+            .input_output = buffer[IOStart..IOEnd],
+            .high = buffer[HighStart..HighEnd],
         };
     }
 
@@ -88,105 +68,23 @@ pub const Memory = struct {
         self.allocator.free(self.buffer);
     }
 
-    pub fn stackPush(self: *Self, value: u16) !void {
-        if (self.stack_size >= StackCapacity) {
-            return error.StackOverflow;
-        }
-
-        self.stack[self.stack_size] = value;
-        self.stack_size += 1;
+    pub fn read(self: *Self, comptime t: type, addr: u16) t {
+        return std.mem.bytesToValue(t, self.buffer[addr..][0..@sizeOf(t)]);
     }
 
-    pub fn stackPop(self: *Self) !u16 {
-        if (self.stack_size == 0) {
-            return error.StackUnderflow;
-        }
-
-        self.stack_size -= 1;
-        return self.stack[self.stack_size];
+    pub fn read_ptr(self: *Self, comptime t: type, addr: u16) *align(1) t {
+        return std.mem.bytesAsValue(t, self.buffer[addr..][0..@sizeOf(t)]);
     }
 
-    pub fn loadRom(self: *Self, rom: []const u8) void {
-        std.mem.copy(u8, self.buffer[RomStart..], rom);
-        self.program_counter = RomStart;
+    pub fn write(self: *Self, comptime t: type, addr: u16, value: t) void {
+        std.mem.copy(u8, self.buffer[addr..][0..@sizeOf(t)], std.mem.toBytes(value)[0..]);
     }
 
-    pub fn decrementTimers(self: *Self) void {
-        if (self.delay_timer > 0) self.delay_timer -= 1;
-        if (self.sound_timer > 0) self.sound_timer -= 1;
+    pub fn load_boot_rom(self: *Self, rom: []const u8) void {
+        std.mem.copy(u8, self.buffer, rom[0x00..0xFF]);
     }
 
-    pub fn fetchInstruction(self: *Self) u16 {
-        defer self.program_counter += 2;
-        return std.mem.readIntBig(u16, self.buffer[self.program_counter..][0..2]);
-    }
-
-    pub fn skipInstruction(self: *Self) void {
-        self.program_counter += 2;
-    }
-
-    pub fn jumpToAddress(self: *Self, address: u12) void {
-        self.program_counter = @intCast(u16, address);
-    }
-
-    pub fn subroutineCall(self: *Self, address: u12) void {
-        // TODO implement calling subroutines
-    }
-
-    pub fn subroutineReturn(self: *Self) void {
-        // TODO implement returning from subroutines
-    }
-
-    pub fn addVariable(self: *Self, x: u4, value: u8) void {
-        _ = @addWithOverflow(u8, self.variable[x], value, &self.variable[x]);
-    }
-
-    pub fn addVariables(self: *Self, x: u4, y: u4) void {
-        const vx = &self.variable[x];
-        const vy = &self.variable[y];
-
-        if (@addWithOverflow(u8, vx.*, vy.*, vx)) {
-            self.variable[0xf] = 1;
-        } else {
-            self.variable[0xf] = 0;
-        }
-    }
-
-    pub fn subVariables(self: *Self, x: u4, y: u4) void {
-        const vx = &self.variable[x];
-        const vy = &self.variable[y];
-
-        if (@subWithOverflow(u8, vx.*, vy.*, vx)) {
-            self.variable[0xf] = 0;
-        } else {
-            self.variable[0xf] = 1;
-        }
+    pub fn load_game_rom(self: *Self, rom: []const u8) void {
+        std.mem.copy(u8, self.buffer[0x100..], rom[0..RomSize]);
     }
 };
-
-test "system font loaded" {
-    var memory = try Memory.init(std.testing.allocator);
-    defer memory.deinit();
-
-    const memory_font = memory.buffer[Memory.FontStart..Memory.FontEnd];
-    try std.testing.expectEqualSlices(u8, &system_font, memory_font);
-}
-
-test "stack overflow & underflow" {
-    var memory = try Memory.init(std.testing.allocator);
-    defer memory.deinit();
-
-    inline for (std.mem.zeroes([Memory.StackCapacity]void)) |_| {
-        try memory.stackPush(0xaaff);
-    }
-
-    try std.testing.expectError(error.StackOverflow, memory.stackPush(0xbaad));
-
-    inline for (std.mem.zeroes([Memory.StackCapacity]void)) |_| {
-        _ = try memory.stackPop();
-    }
-
-    try std.testing.expectError(error.StackUnderflow, memory.stackPop());
-}
-
-test "fetch & skip instruction" {}

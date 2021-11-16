@@ -9,7 +9,7 @@ const WindowConfig = struct {
     vsync: bool = true,
     window_width: usize = 640,
     window_height: usize = 580,
-    window_title: [:0]const u8 = "CHIP-8",
+    window_title: [:0]const u8 = "ZigBoy",
 };
 
 fn compileShader(source: []const u8, stage: gl.ShaderType) !gl.Shader {
@@ -48,6 +48,7 @@ pub const Window = struct {
 
     window: *glfw.Window,
     program: gl.Program,
+    allocator: *std.mem.Allocator,
 
     screen_texture: gl.Texture,
     screen_width: usize,
@@ -58,7 +59,7 @@ pub const Window = struct {
     vertex_buffer: gl.Buffer,
     vertex_count: usize,
 
-    pub fn init(config: WindowConfig) !Self {
+    pub fn init(alloc: *std.mem.Allocator, config: WindowConfig) !Self {
         try glfw.init();
 
         // At least version 3.3
@@ -117,8 +118,9 @@ pub const Window = struct {
         gl.vertexAttribPointer(0, 2, .float, false, 2 * @sizeOf(f32), 0);
         gl.bufferData(.array_buffer, f32, &vert_data, .static_draw);
 
-        const screen = try std.heap.page_allocator.alloc(u8, config.width * config.height);
-        defer std.heap.page_allocator.free(screen);
+        const screen = try alloc.alloc(u8, config.width * config.height);
+        for (screen) |*pixel| pixel.* = 0;
+        defer alloc.free(screen);
 
         const pbo = gl.createBuffer();
         gl.bindBuffer(pbo, .pixel_unpack_buffer);
@@ -135,6 +137,7 @@ pub const Window = struct {
         const context = .{
             .window = window,
             .program = program,
+            .allocator = alloc,
 
             .screen_texture = tex,
             .screen_width = config.width,
