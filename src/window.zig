@@ -166,6 +166,12 @@ pub const Window = struct {
         return !glfw.windowShouldClose(self.window);
     }
 
+    pub fn setTitle(self: *Self, title: []const u8) !void {
+        const c_title = try std.heap.c_allocator.dupeZ(u8, title);
+        glfw.setWindowTitle(self.window, c_title);
+        std.heap.c_allocator.free(c_title);
+    }
+
     pub const Key = glfw.Key;
 
     pub fn keyPressed(self: *Self, key: Key) bool {

@@ -1,8 +1,10 @@
 const std = @import("std");
 
 const window = @import("window.zig");
-const memory = @import("memory.zig");
-const execution = @import("execution.zig");
+
+const MMU = @import("memory.zig");
+const PPU = @import("graphics.zig");
+const CPU = @import("execution.zig");
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -11,30 +13,33 @@ pub fn main() anyerror!void {
     var win = try window.Window.init(&gpa.allocator, .{});
     defer win.deinit();
 
-    var ram = try memory.Memory.init(&gpa.allocator);
-    defer ram.deinit();
+    var mmu = try MMU.init(&gpa.allocator, BootRom, GameRom);
+    defer mmu.deinit();
 
-    // Load roms
-    ram.load_boot_rom(memory.BootRom);
-    // ram.load_game_rom(memory.PkmnBlue);
-    ram.load_game_rom(@embedFile("roms/gb-test-roms/cpu_instrs/individual/06-ld r,r.gb")[0..]);
+    // Set the game title to the window title.
+    try win.setTitle(mmu.gameTitle());
 
-    var cpu = try execution.CPU.init(&ram, &gpa.allocator);
+    var ppu = try PPU.init(&mmu, &gpa.allocator);
+    defer ppu.deinit();
+
+    var cpu = try CPU.init(&mmu, &gpa.allocator);
     defer cpu.deinit();
 
-    const stdin = std.io.getStdIn().reader();
-
     while (win.alive()) {
+        const t_a = std.time.nanoTimestamp();
+
         var draw = win.drawBegin();
         defer win.drawFinish();
 
-        _ = cpu.step_instruction();
+        // Step until the PPU can draw a frame.
+        while (ppu.step(cpu.step())) {}
 
-        if (ram.buffer[0xff02] == 0x81) {
-            std.debug.print("{u}", .{ram.buffer[0xff01]});
-            ram.buffer[0xff02] = 0x0;
-        }
+        ppu.blit(draw.screen);
 
-        // try stdin.skipUntilDelimiterOrEof('\n');
+        const t_b = std.time.nanoTimestamp();
+        std.debug.print("Δt = {e:.6}, pc = ${X:0>4}\n", .{
+            @intToFloat(f64, t_b - t_a) / 1_000_000,
+            cpu.registers.pc,
+        });
     }
 }

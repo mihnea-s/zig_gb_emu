@@ -1,11 +1,17 @@
 const std = @import("std");
 
+/// Speed of GameBoy CPU in number of clock cycles
+/// (also called t-cycles) per second.
+///
+/// `1 Mhz = 10 ** 6 Clocks per second`
+pub const Speed = comptime try std.math.powi(usize, 10, 6);
+
 pub const FlagRegister = packed struct {
-    zero: u1 = 0, // set if last operation resulted in zero, or CMP'd values matched
-    nsub: u1 = 0, // set if subtraction occured in the last operation
-    half: u1 = 0, // set if a carry occured in the lower nibble of the last operation
-    cary: u1 = 0, // set if a carry occurde or A is smaller in the CP instruction
-    rest: u4 = 0, // lower nibble of the flag register
+    unused: u4 = 0, // lower nibble of the flag register
+    carry: bool = false, // set if a carry occured or A is smaller in the CP instruction
+    half: bool = false, // set if a carry occured in the lower nibble of the last operation
+    nsub: bool = false, // set if subtraction occured in the last operation
+    zero: bool = false, // set if last operation resulted in zero, or CMP'd values matched
 };
 
 pub const Registers = struct {
@@ -13,39 +19,125 @@ pub const Registers = struct {
 
     pc: u16 = 0, // 16-bit program counter
 
-    ie: bool = true, // interrupts enabled
+    ime: bool = true, // interrupts enabled
 
     af: packed union {
         all: u16,
         ind: packed struct {
-            a: u8,
             f: FlagRegister,
+            a: u8,
         },
     } = .{ .all = 0 },
 
     bc: packed union {
         all: u16,
         ind: packed struct {
-            b: u8,
             c: u8,
+            b: u8,
         },
     } = .{ .all = 0 },
 
     de: packed union {
         all: u16,
         ind: packed struct {
-            d: u8,
             e: u8,
+            d: u8,
         },
     } = .{ .all = 0 },
 
     hl: packed union {
         all: u16,
         ind: packed struct {
-            h: u8,
             l: u8,
+            h: u8,
         },
     } = .{ .all = 0 },
+};
+
+pub const Controller = packed struct {
+    right_or_a_button: bool,
+    left_or_b_button: bool,
+    down_or_start: bool,
+    up_or_select: bool,
+    select_direction: bool,
+    select_action: bool,
+    unused: u2,
+};
+
+pub const TimerControl = packed struct {
+    mode: enum(u2) {
+        slowest = 0b00,
+        fastest = 0b01,
+        fast = 0b10,
+        slow = 0b11,
+    },
+
+    enabled: bool,
+    unused: u5,
+};
+
+pub const Interrupt = enum {
+    v_blank,
+    lcd_status,
+    timer,
+    serial,
+    joypad,
+};
+
+pub const InterruptFlags = packed struct {
+    v_blank: bool,
+    lcd_status: bool,
+    timer: bool,
+    serial: bool,
+    joypad: bool,
+    unused: u4,
+
+    pub fn is_set(self: *@This(), comptime irrpt: Interrupt) bool {
+        return @field(self, comptime switch (irrpt) {
+            .v_blank => "v_blank",
+            .lcd_status => "lcd_status",
+            .timer => "timer",
+            .serial => "serial",
+            .joypad => "joypad",
+        });
+    }
+
+    pub fn set(self: *@This(), comptime irrpt: Interrupt, value: bool) void {
+        @field(self, comptime switch (irrpt) {
+            .v_blank => "v_blank",
+            .lcd_status => "lcd_status",
+            .timer => "timer",
+            .serial => "serial",
+            .joypad => "joypad",
+        }) = value;
+    }
+};
+
+pub const LCDControl = packed struct {
+    bg_win_enable: bool,
+    sprites_enable: bool,
+    sprites_tall: bool,
+    background_tilemap: u1,
+    bg_win_tiledata: u1,
+    window_enable: bool,
+    window_tilemap: u1,
+    lcd_ppu_enable: bool,
+};
+
+pub const LCDStatus = packed struct {
+    draw_stage: enum(u2) {
+        h_blank = 0,
+        v_blank = 1,
+        oam_scan = 2,
+        pixel_transfer = 3,
+    },
+
+    lyc_equal_ly: bool,
+    hblank_interrupt: bool,
+    vblank_interrupt: bool,
+    oam_interrupt: bool,
+    lyc_interrupt: bool,
+    unused: u1,
 };
 
 pub const Instruction = struct {
@@ -64,6 +156,12 @@ fn instruction(
         .byte_length = byte_length,
         .clock_cycles = clock_cycles,
     };
+}
+
+fn control_flow(mnemonic: []const u8, clock_cycles: usize) Instruction {
+    // Control flow instructions move the PC manually, so
+    // we shouldn't move it based on instruction byte length.
+    return instruction(mnemonic, 0, clock_cycles);
 }
 
 //
@@ -230,148 +328,148 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x7F => instruction("ld A A", 1, 4),
 
         // 0x80 instructions
-        0x80 => null,
-        0x81 => null,
-        0x82 => null,
-        0x83 => null,
-        0x84 => null,
-        0x85 => null,
-        0x86 => null,
-        0x87 => null,
-        0x88 => null,
-        0x89 => null,
-        0x8A => null,
-        0x8B => null,
-        0x8C => null,
-        0x8D => null,
-        0x8E => null,
-        0x8F => null,
+        0x80 => instruction("add A B", 1, 4),
+        0x81 => instruction("add A C", 1, 4),
+        0x82 => instruction("add A D", 1, 4),
+        0x83 => instruction("add A E", 1, 4),
+        0x84 => instruction("add A H", 1, 4),
+        0x85 => instruction("add A L", 1, 4),
+        0x86 => instruction("add A (HL)", 1, 8),
+        0x87 => instruction("add A A", 1, 4),
+        0x88 => instruction("adc A B", 1, 4),
+        0x89 => instruction("adc A C", 1, 4),
+        0x8A => instruction("adc A D", 1, 4),
+        0x8B => instruction("adc A E", 1, 4),
+        0x8C => instruction("adc A H", 1, 4),
+        0x8D => instruction("adc A L", 1, 4),
+        0x8E => instruction("adc A (HL)", 1, 8),
+        0x8F => instruction("adc A A", 1, 4),
 
         // 0x90 instructions
         0x90 => instruction("sub A B", 1, 4),
-        0x91 => null,
-        0x92 => null,
-        0x93 => null,
-        0x94 => null,
-        0x95 => null,
-        0x96 => null,
-        0x97 => null,
-        0x98 => null,
-        0x99 => null,
-        0x9A => null,
-        0x9B => null,
-        0x9C => null,
-        0x9D => null,
-        0x9E => null,
-        0x9F => null,
+        0x91 => instruction("sub A C", 1, 4),
+        0x92 => instruction("sub A D", 1, 4),
+        0x93 => instruction("sub A E", 1, 4),
+        0x94 => instruction("sub A H", 1, 4),
+        0x95 => instruction("sub A L", 1, 4),
+        0x96 => instruction("sub A (HL)", 1, 8),
+        0x97 => instruction("sub A A", 1, 4),
+        0x98 => instruction("sbc A B", 1, 4),
+        0x99 => instruction("sbc A C", 1, 4),
+        0x9A => instruction("sbc A D", 1, 4),
+        0x9B => instruction("sbc A E", 1, 4),
+        0x9C => instruction("sbc A H", 1, 4),
+        0x9D => instruction("sbc A L", 1, 4),
+        0x9E => instruction("sbc A (HL)", 1, 8),
+        0x9F => instruction("sbc A A", 1, 4),
 
         // 0xA0 instructions
-        0xA0 => null,
-        0xA1 => null,
-        0xA2 => null,
-        0xA3 => null,
-        0xA4 => null,
-        0xA5 => null,
-        0xA6 => null,
-        0xA7 => null,
-        0xA8 => null,
-        0xA9 => null,
-        0xAA => null,
-        0xAB => null,
-        0xAC => null,
-        0xAD => null,
-        0xAE => null,
+        0xA0 => instruction("and A B", 1, 4),
+        0xA1 => instruction("and A C", 1, 4),
+        0xA2 => instruction("and A D", 1, 4),
+        0xA3 => instruction("and A E", 1, 4),
+        0xA4 => instruction("and A H", 1, 4),
+        0xA5 => instruction("and A L", 1, 4),
+        0xA6 => instruction("and A (HL)", 1, 8),
+        0xA7 => instruction("and A A", 1, 4),
+        0xA8 => instruction("xor A B", 1, 4),
+        0xA9 => instruction("xor A C", 1, 4),
+        0xAA => instruction("xor A D", 1, 4),
+        0xAB => instruction("xor A E", 1, 4),
+        0xAC => instruction("xor A H", 1, 4),
+        0xAD => instruction("xor A L", 1, 4),
+        0xAE => instruction("xor A (HL)", 1, 8),
         0xAF => instruction("xor A A", 1, 4),
 
         // 0xB0 instructions
-        0xB0 => null,
-        0xB1 => null,
-        0xB2 => null,
-        0xB3 => null,
-        0xB4 => null,
-        0xB5 => null,
-        0xB6 => null,
-        0xB7 => null,
-        0xB8 => null,
-        0xB9 => null,
-        0xBA => null,
-        0xBB => null,
-        0xBC => null,
-        0xBD => null,
-        0xBE => null,
-        0xBF => null,
+        0xB0 => instruction("or A B", 1, 4),
+        0xB1 => instruction("or A C", 1, 4),
+        0xB2 => instruction("or A D", 1, 4),
+        0xB3 => instruction("or A E", 1, 4),
+        0xB4 => instruction("or A H", 1, 4),
+        0xB5 => instruction("or A L", 1, 4),
+        0xB6 => instruction("or A (HL)", 1, 8),
+        0xB7 => instruction("or A A", 1, 4),
+        0xB8 => instruction("cp A B", 1, 4),
+        0xB9 => instruction("cp A C", 1, 4),
+        0xBA => instruction("cp A D", 1, 4),
+        0xBB => instruction("cp A E", 1, 4),
+        0xBC => instruction("cp A H", 1, 4),
+        0xBD => instruction("cp A L", 1, 4),
+        0xBE => instruction("cp A (HL)", 1, 8),
+        0xBF => instruction("cp A A", 1, 4),
 
         // 0xC0 instructions
-        0xC0 => instruction("ret NZ", 1, 14),
+        0xC0 => control_flow("ret NZ", 14),
         0xC1 => instruction("pop BC", 1, 12),
-        0xC2 => instruction("jp NZ %XX", 3, 14),
-        0xC3 => instruction("jp %XX", 3, 16),
-        0xC4 => instruction("call NZ %XX", 3, 16),
+        0xC2 => control_flow("jp NZ %XX", 14),
+        0xC3 => control_flow("jp %XX", 16),
+        0xC4 => control_flow("call NZ %XX", 16),
         0xC5 => instruction("push BC", 1, 16),
         0xC6 => instruction("add A %X", 2, 8),
-        0xC7 => instruction("rst 00h", 1, 16),
-        0xC8 => instruction("ret Z", 1, 14),
-        0xC9 => instruction("ret", 1, 16),
-        0xCA => instruction("jp Z %XX", 3, 14),
+        0xC7 => control_flow("rst 00h", 16),
+        0xC8 => control_flow("ret Z", 14),
+        0xC9 => control_flow("ret", 16),
+        0xCA => control_flow("jp Z %XX", 14),
         0xCB => unreachable, // Prefix
-        0xCC => instruction("call Z %XX", 3, 18),
-        0xCD => instruction("call %XX", 3, 24),
+        0xCC => control_flow("call Z %XX", 18),
+        0xCD => control_flow("call %XX", 24),
         0xCE => instruction("adc A %X", 2, 8),
-        0xCF => instruction("rst 08h", 1, 16),
+        0xCF => control_flow("rst 08h", 16),
 
         // 0xD0 instructions
-        0xD0 => null,
-        0xD1 => null,
-        0xD2 => null,
-        0xD3 => null,
-        0xD4 => null,
-        0xD5 => null,
-        0xD6 => null,
-        0xD7 => null,
-        0xD8 => null,
-        0xD9 => null,
-        0xDA => null,
-        0xDB => null,
-        0xDC => null,
-        0xDD => null,
-        0xDE => null,
-        0xDF => null,
+        0xD0 => control_flow("ret NC", (8 + 20) / 2),
+        0xD1 => instruction("pop DE", 1, 12),
+        0xD2 => control_flow("jp NC %XX", (12 + 16) / 2),
+        0xD3 => null, // Non-existant
+        0xD4 => control_flow("call NC %XX", (12 + 24) / 2),
+        0xD5 => instruction("push DE", 1, 16),
+        0xD6 => instruction("sub A %X", 2, 8),
+        0xD7 => control_flow("rst 10h", 16),
+        0xD8 => control_flow("ret C", (8 + 16) / 2),
+        0xD9 => control_flow("reti", 16),
+        0xDA => control_flow("jp C %XX", (12 + 16) / 2),
+        0xDB => null, // Non-existant
+        0xDC => control_flow("call C %XX", (12 + 24) / 2),
+        0xDD => null, // Non-existant
+        0xDE => instruction("sbc A %X", 2, 8),
+        0xDF => control_flow("rst 18h", 16),
 
         // 0xE0 instructions
         0xE0 => instruction("ld ($FF00 + %X) A", 2, 12),
-        0xE1 => null,
+        0xE1 => instruction("pop HL", 1, 12),
         0xE2 => instruction("ld ($FF00 + C) A", 1, 8),
-        0xE3 => null,
-        0xE4 => null,
-        0xE5 => null,
-        0xE6 => null,
-        0xE7 => null,
-        0xE8 => null,
-        0xE9 => null,
+        0xE3 => null, // Non-existant
+        0xE4 => null, // Non-existant
+        0xE5 => instruction("push HL", 1, 16),
+        0xE6 => instruction("and A %X", 2, 8),
+        0xE7 => control_flow("rst 20h", 16),
+        0xE8 => instruction("add SP %Xi", 2, 16),
+        0xE9 => control_flow("jp HL", 4),
         0xEA => instruction("ld (%XX) A", 3, 16),
-        0xEB => null,
-        0xEC => null,
-        0xED => null,
-        0xEE => null,
-        0xEF => null,
+        0xEB => null, // Non-existant
+        0xEC => null, // Non-existant
+        0xED => null, // Non-existant
+        0xEE => instruction("xor A %X", 2, 8),
+        0xEF => control_flow("rst 28h", 16),
 
         // 0xF0 instructions
         0xF0 => instruction("ld A ($FF00 + %X)", 2, 12),
-        0xF1 => null,
-        0xF2 => null,
+        0xF1 => instruction("pop AF", 1, 12),
+        0xF2 => instruction("ld A ($FF00 + C)", 1, 8),
         0xF3 => instruction("di", 1, 4),
-        0xF4 => null,
-        0xF5 => null,
-        0xF6 => null,
-        0xF7 => null,
-        0xF8 => null,
-        0xF9 => null,
-        0xFA => null,
+        0xF4 => null, // Non-existant
+        0xF5 => instruction("push AF", 1, 16),
+        0xF6 => instruction("or A %X", 2, 8),
+        0xF7 => control_flow("rst 30h", 16),
+        0xF8 => instruction("ld HL SP+%Xi", 2, 12),
+        0xF9 => instruction("ld SP HL", 1, 8),
+        0xFA => instruction("ld A (%XX)", 3, 16),
         0xFB => instruction("ei", 1, 4),
-        0xFC => null,
-        0xFD => null,
+        0xFC => null, // Non-existant
+        0xFD => null, // Non-existant
         0xFE => instruction("cp A %X", 2, 8),
-        0xFF => null,
+        0xFF => control_flow("rst 38h", 16),
     };
 }
 
