@@ -75,7 +75,7 @@ pub fn deinit(self: *Self) void {
     self.allocator.free(self.framebuffer);
 }
 
-fn pixel_color(palette: u8, index: u2) u8 {
+fn pixelColor(palette: u8, index: u2) u8 {
     const PixelWhite = 0xFF;
     const PixelLight = 0x80;
     const PixelDark = 0x40;
@@ -93,7 +93,7 @@ fn pixel_color(palette: u8, index: u2) u8 {
 
 const ReadTileMode = enum { block_0, block_1 };
 
-fn read_tile_pixel(self: *Self, id: u8, x: u4, y: u4, mode: ReadTileMode) u2 {
+fn readTilePixel(self: *Self, id: u8, x: u4, y: u4, mode: ReadTileMode) u2 {
     const addr = switch (mode) {
         .block_0 => 0x8000 + 16 * @intCast(u16, id),
         .block_1 => 0x8800 + 16 * @intCast(u16, id +% 0x80),
@@ -107,13 +107,13 @@ fn read_tile_pixel(self: *Self, id: u8, x: u4, y: u4, mode: ReadTileMode) u2 {
     return bit1 | bit2;
 }
 
-fn draw_background_pixel_line(self: *Self) void {
-    const lcd_control = self.mmu.io_lcd_control();
+fn drawBackgroundPixelLine(self: *Self) void {
+    const lcd_control = self.mmu.ioLCDControl();
 
-    const scx = self.mmu.io_register(.scroll_x).*;
-    const scy = self.mmu.io_register(.scroll_y).*;
+    const scx = self.mmu.ioRegister(.scroll_x).*;
+    const scy = self.mmu.ioRegister(.scroll_y).*;
 
-    const palette = self.mmu.io_register(.bg_palette).*;
+    const palette = self.mmu.ioRegister(.bg_palette).*;
     const tilemap = TileMapAddrs[lcd_control.background_tilemap];
 
     var pixel_x: u8 = 0;
@@ -127,70 +127,70 @@ fn draw_background_pixel_line(self: *Self) void {
         const tile_x = @intCast(u4, x % 8);
         const tile_y = @intCast(u4, y % 8);
 
-        const pixel = self.read_tile_pixel(id, tile_x, tile_y, switch (lcd_control.bg_win_tiledata) {
+        const pixel = self.readTilePixel(id, tile_x, tile_y, switch (lcd_control.bg_win_tiledata) {
             0 => .block_1,
             1 => .block_0,
         });
 
         const fb_index = @intCast(usize, self.line) * FramebufferWidth + pixel_x;
-        self.framebuffer[fb_index] = pixel_color(palette, pixel);
+        self.framebuffer[fb_index] = pixelColor(palette, pixel);
     }
 }
 
-fn draw_window_pixel_line(self: *Self) void {
-    const wx = self.mmu.io_register(.window_x).*;
-    const wy = self.mmu.io_register(.window_y).*;
+fn drawWindowPixelLine(self: *Self) void {
+    const wx = self.mmu.ioRegister(.window_x).*;
+    const wy = self.mmu.ioRegister(.window_y).*;
 
     // TODO implement drawing of window layer.
 }
 
-fn read_sprite(self: *Self, id: u8) Sprite {
+fn readSprite(self: *Self, id: u8) Sprite {
     return self.mmu.read(Sprite, SpriteTableStart + id);
 }
 
-fn draw_sprites_pixel_line(self: *Self) void {
+fn drawSpritesPixelLine(self: *Self) void {
     // TODO implement drawing of sprites.
 }
 
-fn draw_pixel_line(self: *Self) void {
-    const lcd_control = self.mmu.io_lcd_control();
+fn drawPixelLine(self: *Self) void {
+    const lcd_control = self.mmu.ioLCDControl();
 
     if (lcd_control.bg_win_enable) {
-        self.draw_background_pixel_line();
+        self.drawBackgroundPixelLine();
     }
 
     if (lcd_control.bg_win_enable and lcd_control.window_enable) {
-        self.draw_window_pixel_line();
+        self.drawWindowPixelLine();
     }
 
     if (lcd_control.sprites_enable) {
-        self.draw_sprites_pixel_line();
+        self.drawSpritesPixelLine();
     }
 }
 
-fn line_next(self: *Self) void {
+fn lineNext(self: *Self) void {
     self.line +%= 1;
 
-    const lyc = self.mmu.io_register(.lcd_y_compare).*;
+    const lyc = self.mmu.ioRegister(.lcd_y_compare).*;
 
-    self.mmu.io_register(.lcd_y_coord).* = self.line;
-    self.mmu.io_lcd_status().lyc_equal_ly = self.line == lyc;
+    self.mmu.ioRegister(.lcd_y_coord).* = self.line;
+    self.mmu.ioLCDStatus().lyc_equal_ly = self.line == lyc;
 
-    if (self.line == lyc and self.mmu.io_lcd_status().lyc_interrupt) {
-        self.mmu.fire_interrupt(.lcd_status);
+    if (self.line == lyc and self.mmu.ioLCDStatus().lyc_interrupt) {
+        self.mmu.fireInterrupt(.lcd_status);
     }
 }
 
-fn line_reset(self: *Self) void {
+fn lineReset(self: *Self) void {
     self.line = 0xFF;
     self.ready = true;
-    self.line_next();
+    self.lineNext();
 }
 
-fn update_state(self: *Self, comptime new_state: PPUState) void {
+fn updateState(self: *Self, comptime new_state: PPUState) void {
     self.state = new_state;
 
-    self.mmu.io_lcd_status().draw_stage = switch (new_state) {
+    self.mmu.ioLCDStatus().draw_stage = switch (new_state) {
         .v_blank => .v_blank,
         .h_blank => .h_blank,
         .oam_scan => .oam_scan,
@@ -198,16 +198,16 @@ fn update_state(self: *Self, comptime new_state: PPUState) void {
     };
 
     switch (new_state) {
-        .v_blank => if (self.mmu.io_lcd_status().vblank_interrupt) {
-            self.mmu.fire_interrupt(.lcd_status);
+        .v_blank => if (self.mmu.ioLCDStatus().vblank_interrupt) {
+            self.mmu.fireInterrupt(.lcd_status);
         },
 
-        .h_blank => if (self.mmu.io_lcd_status().hblank_interrupt) {
-            self.mmu.fire_interrupt(.lcd_status);
+        .h_blank => if (self.mmu.ioLCDStatus().hblank_interrupt) {
+            self.mmu.fireInterrupt(.lcd_status);
         },
 
-        .oam_scan => if (self.mmu.io_lcd_status().oam_interrupt) {
-            self.mmu.fire_interrupt(.lcd_status);
+        .oam_scan => if (self.mmu.ioLCDStatus().oam_interrupt) {
+            self.mmu.fireInterrupt(.lcd_status);
         },
 
         else => {},
@@ -216,7 +216,7 @@ fn update_state(self: *Self, comptime new_state: PPUState) void {
 
 pub fn step(self: *Self, clocks: usize) bool {
     // Step CPU continously while PPU is off.
-    if (!self.mmu.io_lcd_control().lcd_ppu_enable) {
+    if (!self.mmu.ioLCDControl().lcd_ppu_enable) {
         return true;
     }
 
@@ -227,10 +227,10 @@ pub fn step(self: *Self, clocks: usize) bool {
             self.dots %= HBlankDots;
 
             if (self.line == VBlankLine) {
-                self.update_state(.v_blank);
+                self.updateState(.v_blank);
             } else {
-                self.update_state(.oam_scan);
-                self.line_next();
+                self.updateState(.oam_scan);
+                self.lineNext();
             }
         },
 
@@ -238,22 +238,22 @@ pub fn step(self: *Self, clocks: usize) bool {
             self.dots %= VBlankDots;
 
             if (self.line == RenderLine) {
-                self.update_state(.oam_scan);
-                self.line_reset();
+                self.updateState(.oam_scan);
+                self.lineReset();
             } else {
-                self.line_next();
+                self.lineNext();
             }
         },
 
         .oam_scan => if (self.dots >= OAMScanDots) {
             self.dots %= OAMScanDots;
-            self.update_state(.pixel_transfer);
+            self.updateState(.pixel_transfer);
         },
 
         .pixel_transfer => if (self.dots >= PixelTransferDots) {
             self.dots %= PixelTransferDots;
-            self.draw_pixel_line();
-            self.update_state(.h_blank);
+            self.drawPixelLine();
+            self.updateState(.h_blank);
         },
     }
 

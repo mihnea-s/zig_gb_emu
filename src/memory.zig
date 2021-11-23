@@ -57,8 +57,10 @@ bootloader: *const [BootSize]u8,
 rom_bank_0: *const [RomBank0Size]u8,
 rom_bank_n: *const [RomBankNSize]u8,
 
+extern_ram_bank: usize,
+extern_ram: [4]*[ExternSize]u8,
+
 video_ram: *[VideoSize]u8,
-extern_ram: *[ExternSize]u8,
 work_ram: *[WorkSize]u8,
 sprite_table: *[SprTableSize]u8,
 input_output: *[IOSize]u8,
@@ -72,23 +74,21 @@ pub fn init(
     std.debug.assert(bootrom.len == BootSize);
     std.debug.assert(cartridge.len >= RomBank0Size + RomBankNSize);
 
-    const bootloader = try allocator.alloc(u8, BootSize);
-    const rom_bank_0 = try allocator.alloc(u8, RomBank0Size);
-    const rom_bank_n = try allocator.alloc(u8, RomBankNSize);
+    var extern_ram: [4]*[ExternSize]u8 = undefined;
 
-    std.mem.copy(u8, bootloader, bootrom);
-    std.mem.copy(u8, rom_bank_0, cartridge[RomBank0Start..RomBank0End]);
-    std.mem.copy(u8, rom_bank_n, cartridge[RomBankNStart..RomBankNEnd]);
+    for (extern_ram) |*bank| {
+        var ram = try allocator.alloc(u8, ExternSize);
+        bank.* = ram[0..ExternSize];
+        std.mem.set(u8, bank.*, 0);
+    }
 
     const video_ram = try allocator.alloc(u8, VideoSize);
-    const extern_ram = try allocator.alloc(u8, ExternSize);
     const work_ram = try allocator.alloc(u8, WorkSize);
     const sprite_table = try allocator.alloc(u8, SprTableSize);
     const input_output = try allocator.alloc(u8, IOSize);
     const high_ram = try allocator.alloc(u8, HighSize);
 
     std.mem.set(u8, video_ram, 0);
-    std.mem.set(u8, extern_ram, 0);
     std.mem.set(u8, sprite_table, 0);
     std.mem.set(u8, input_output, 0);
     std.mem.set(u8, high_ram, 0);
@@ -97,12 +97,14 @@ pub fn init(
         .cartridge = cartridge,
         .allocator = allocator,
 
-        .bootloader = bootloader[0..BootSize],
-        .rom_bank_0 = rom_bank_0[0..RomBank0Size],
-        .rom_bank_n = rom_bank_n[0..RomBankNSize],
+        .bootloader = bootrom[0..BootSize],
+        .rom_bank_0 = cartridge[RomBank0Start..RomBank0End+1][0..RomBank0Size],
+        .rom_bank_n = cartridge[RomBankNStart..RomBankNEnd+1][0..RomBankNSize],
+
+        .extern_ram_bank = 0,
+        .extern_ram = extern_ram,
 
         .video_ram = video_ram[0..VideoSize],
-        .extern_ram = extern_ram[0..ExternSize],
         .work_ram = work_ram[0..WorkSize],
         .sprite_table = sprite_table[0..SprTableSize],
         .input_output = input_output[0..IOSize],
@@ -111,35 +113,35 @@ pub fn init(
 }
 
 pub fn deinit(self: Self) void {
-    self.allocator.free(self.bootloader);
-    self.allocator.free(self.rom_bank_0);
-    self.allocator.free(self.rom_bank_n);
+    for (self.extern_ram) |bank| self.allocator.free(bank);
 
     self.allocator.free(self.video_ram);
-    self.allocator.free(self.extern_ram);
     self.allocator.free(self.work_ram);
     self.allocator.free(self.sprite_table);
     self.allocator.free(self.input_output);
     self.allocator.free(self.high_ram);
 }
 
-fn map_bank_0(self: *Self, addr: u16) *const u8 {
-    if (addr < 0x100 and self.io_register(.disable_boot).* == 0) {
+fn mapBank0(self: *Self, addr: u16) *const u8 {
+    if (addr < 0x100 and self.ioRegister(.disable_boot).* == 0) {
         return &self.bootloader[addr];
     } else {
         return &self.rom_bank_0[addr];
     }
 }
 
-fn map_bank_n(self: *Self, addr: u16) *const u8 {
-    // TODO Map switchable memory bank.
+fn mapBankN(self: *Self, addr: u16) *const u8 {
     return &self.rom_bank_n[addr];
 }
 
-fn map_write_address(self: *Self, addr: u16) *u8 {
+fn mapExternRam(self: *Self, addr: u16) *u8 {
+    return &self.extern_ram[self.extern_ram_bank][addr];
+}
+
+fn mapWriteAddress(self: *Self, addr: u16) *u8 {
     return switch (addr) {
+        ExternStart...ExternEnd => self.mapExternRam(addr - ExternStart),
         VideoStart...VideoEnd => &self.video_ram[addr - VideoStart],
-        ExternStart...ExternEnd => &self.extern_ram[addr - ExternStart],
         WorkStart...WorkEnd => &self.work_ram[addr - WorkStart],
         EchoStart...EchoEnd => &self.work_ram[addr - EchoStart],
         SprTableStart...SprTableEnd => &self.sprite_table[addr - SprTableStart],
@@ -150,33 +152,27 @@ fn map_write_address(self: *Self, addr: u16) *u8 {
     };
 }
 
-fn map_read_address(self: *Self, addr: u16) *const u8 {
+fn mapReadAddress(self: *Self, addr: u16) *const u8 {
     return switch (addr) {
-        RomBank0Start...RomBank0End => self.map_bank_0(addr - RomBank0Start),
-        RomBankNStart...RomBankNEnd => self.map_bank_n(addr - RomBankNStart),
-        else => self.map_write_address(addr),
+        RomBank0Start...RomBank0End => self.mapBank0(addr - RomBank0Start),
+        RomBankNStart...RomBankNEnd => self.mapBankN(addr - RomBankNStart),
+        else => self.mapWriteAddress(addr),
     };
 }
 
-fn is_readonly(addr: u16) bool {
-    return switch (addr) {
-        RomBank0Start...RomBank0End => true,
-        RomBankNStart...RomBankNEnd => true,
-        EchoStart...EchoEnd => true,
-        UnusedStart...UnusedEnd => true,
-        else => false,
-    };
+fn controlMemoryBank(self: *Self, addr: u16, value: u8) void {
+    // TODO
 }
 
 pub fn read(self: *Self, comptime t: type, addr: u16) t {
     if (@sizeOf(t) == 1) {
-        return @ptrCast(*const t, self.map_read_address(addr)).*;
+        return @ptrCast(*const t, self.mapReadAddress(addr)).*;
     }
 
     var bytes: [@sizeOf(t)]u8 = undefined;
 
     for (bytes) |*byte, offset| {
-        byte.* = self.map_read_address(addr +% @truncate(u16, offset)).*;
+        byte.* = self.mapReadAddress(addr +% @truncate(u16, offset)).*;
     }
 
     return std.mem.bytesToValue(t, &bytes);
@@ -186,14 +182,16 @@ pub fn write(self: *Self, comptime t: type, start_addr: u16, value: t) void {
     for (std.mem.toBytes(value)) |byte, offset| {
         const addr = start_addr +% @truncate(u16, offset);
 
-        if (!is_readonly(addr)) {
-            self.map_write_address(addr).* = byte;
+        if (RomBank0Start <= addr and addr <= RomBankNStart) {
+            self.controlMemoryBank(addr, byte);
+        } else {
+            self.mapWriteAddress(addr).* = byte;
         }
     }
 }
 
 pub const IORegister = enum(u16) {
-    controller = 0xFF00,
+    joypad = 0xFF00,
     timer_divider = 0xFF04,
     timer_counter = 0xFF05,
     timer_modulo = 0xFF06,
@@ -215,37 +213,37 @@ pub const IORegister = enum(u16) {
     interrupt_enable = 0xFFFF,
 };
 
-pub fn io_register(self: *Self, comptime reg: IORegister) *u8 {
-    return self.map_write_address(@enumToInt(reg));
+pub fn ioRegister(self: *Self, comptime reg: IORegister) *u8 {
+    return self.mapWriteAddress(@enumToInt(reg));
 }
 
-pub fn io_controller(self: *Self) *Controller {
-    return @ptrCast(*Controller, self.io_register(.controller));
+pub fn ioJoypad(self: *Self) *Controller {
+    return @ptrCast(*Controller, self.ioRegister(.controller));
 }
 
-pub fn io_timer_control(self: *Self) *TimerControl {
-    return @ptrCast(*TimerControl, self.io_register(.timer_control));
+pub fn ioTimerControl(self: *Self) *TimerControl {
+    return @ptrCast(*TimerControl, self.ioRegister(.timer_control));
 }
 
-pub fn io_interrupt_flag(self: *Self) *InterruptFlags {
-    return @ptrCast(*InterruptFlags, self.io_register(.interrupt_flag));
+pub fn ioInterruptFlag(self: *Self) *InterruptFlags {
+    return @ptrCast(*InterruptFlags, self.ioRegister(.interrupt_flag));
 }
 
-pub fn io_lcd_control(self: *Self) *LCDControl {
-    return @ptrCast(*LCDControl, self.io_register(.lcd_control));
+pub fn ioLCDControl(self: *Self) *LCDControl {
+    return @ptrCast(*LCDControl, self.ioRegister(.lcd_control));
 }
 
-pub fn io_lcd_status(self: *Self) *LCDStatus {
-    return @ptrCast(*LCDStatus, self.io_register(.lcd_status));
+pub fn ioLCDStatus(self: *Self) *LCDStatus {
+    return @ptrCast(*LCDStatus, self.ioRegister(.lcd_status));
 }
 
-pub fn io_interrupt_enable(self: *Self) *InterruptFlags {
-    return @ptrCast(*InterruptFlags, self.io_register(.interrupt_enable));
+pub fn ioInterruptEnable(self: *Self) *InterruptFlags {
+    return @ptrCast(*InterruptFlags, self.ioRegister(.interrupt_enable));
 }
 
-pub fn fire_interrupt(self: *Self, comptime irrpt: Interrupt) void {
-    if (self.io_interrupt_enable().is_set(irrpt)) {
-        self.io_interrupt_flag().set(irrpt, true);
+pub fn fireInterrupt(self: *Self, comptime irrpt: Interrupt) void {
+    if (self.ioInterruptEnable().isSet(irrpt)) {
+        self.ioInterruptFlag().set(irrpt, true);
     }
 }
 

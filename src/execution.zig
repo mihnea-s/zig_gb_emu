@@ -10,18 +10,28 @@ const PseudoRNG = std.rand.DefaultPrng;
 const InstructionMap = std.AutoHashMap(u8, Instruction);
 
 const IxArgument = enum {
+    // 8-bit
     reg_a,
     reg_f,
-
     reg_b,
     reg_c,
-
     reg_d,
     reg_e,
-
     reg_h,
     reg_l,
 
+    mem_u8,
+    mem_i8,
+
+    ptr_de,
+    ptr_bc,
+    ptr_hl,
+
+    ptr_high_c,
+    ptr_high_u8,
+    ptr_mem_u16,
+
+    // 16-bit
     reg_af,
     reg_bc,
     reg_de,
@@ -30,17 +40,8 @@ const IxArgument = enum {
     reg_sp,
     reg_pc,
 
-    ptr_de,
-    ptr_bc,
-    ptr_hl,
-
-    mem_u8,
-    mem_i8,
     mem_u16,
-    ptr_mem_u16,
-
-    ptr_high_c,
-    ptr_high_u8,
+    ptr16_mem_u16,
 };
 
 const IxCondition = enum {
@@ -77,7 +78,7 @@ fn flags(self: *Self) *FlagRegister {
     return &self.registers.af.ind.f;
 }
 
-fn fulfills_condition(self: *Self, comptime cond: IxCondition) bool {
+fn fulfills(self: *Self, comptime cond: IxCondition) bool {
     return switch (cond) {
         .always => true,
         .zero => self.flags().zero,
@@ -87,15 +88,18 @@ fn fulfills_condition(self: *Self, comptime cond: IxCondition) bool {
     };
 }
 
-fn is_arg_16(comptime target: IxArgument) bool {
-    return switch (target) {
-        .reg_af, .reg_bc, .reg_de, .reg_hl, .reg_sp, .mem_u16 => true,
-        else => false,
+fn arg_type(comptime arg: IxArgument) type {
+    return switch (arg) {
+        .reg_af, .reg_bc, .reg_de, .reg_hl => u16,
+        .reg_sp, .reg_pc, .mem_u16, .ptr16_mem_u16 => u16,
+        .mem_i8 => i8,
+        else => u8,
     };
 }
 
-fn get_arg_8(self: *Self, comptime target: IxArgument) u8 {
-    return switch (target) {
+fn get(self: *Self, comptime arg: IxArgument) arg_type(arg) {
+    return switch (arg) {
+        // 8 Bit arguments
         .reg_a => self.registers.af.ind.a,
         .reg_f => self.registers.af.ind.f,
         .reg_b => self.registers.bc.ind.b,
@@ -104,23 +108,35 @@ fn get_arg_8(self: *Self, comptime target: IxArgument) u8 {
         .reg_e => self.registers.de.ind.e,
         .reg_h => self.registers.hl.ind.h,
         .reg_l => self.registers.hl.ind.l,
+
+        .mem_u8 => self.mmu.read(u8, self.registers.pc - 1),
+        .mem_i8 => self.mmu.read(i8, self.registers.pc - 1),
+
         .ptr_bc => self.mmu.read(u8, self.registers.bc.all),
         .ptr_de => self.mmu.read(u8, self.registers.de.all),
         .ptr_hl => self.mmu.read(u8, self.registers.hl.all),
-        .mem_u8 => self.mmu.read(u8, self.registers.pc +% 1),
-        .ptr_mem_u16 => self.mmu.read(u8, self.get_arg_16(.mem_u16)),
+
         .ptr_high_c => self.mmu.read(u8, @as(u16, 0xFF00) +% self.registers.bc.ind.c),
-        .ptr_high_u8 => self.mmu.read(u8, @as(u16, 0xFF00) +% self.get_arg_8(.mem_u8)),
-        else => @compileError("invalid 8bit argument"),
+        .ptr_high_u8 => self.mmu.read(u8, @as(u16, 0xFF00) +% self.get(.mem_u8)),
+        .ptr_mem_u16 => self.mmu.read(u8, self.get(.mem_u16)),
+
+        // 16 Bit arguments
+        .reg_af => self.registers.af.all,
+        .reg_bc => self.registers.bc.all,
+        .reg_de => self.registers.de.all,
+        .reg_hl => self.registers.hl.all,
+
+        .reg_sp => self.registers.sp,
+        .reg_pc => self.registers.pc,
+
+        .mem_u16 => self.mmu.read(u16, self.registers.pc - 2),
+        .ptr16_mem_u16 => self.mmu.read(u16, self.get(.mem_u16)),
     };
 }
 
-fn get_arg_8_signed(self: *Self) i8 {
-    return self.mmu.read(i8, self.registers.pc +% 1);
-}
-
-fn set_arg_8(self: *Self, comptime target: IxArgument, value: u8) void {
-    return switch (target) {
+fn set(self: *Self, comptime arg: IxArgument, value: arg_type(arg)) void {
+    return switch (arg) {
+        // 8 Bit arguments
         .reg_a => self.registers.af.ind.a = value,
         .reg_f => self.registers.af.ind.f = value,
         .reg_b => self.registers.bc.ind.b = value,
@@ -129,58 +145,38 @@ fn set_arg_8(self: *Self, comptime target: IxArgument, value: u8) void {
         .reg_e => self.registers.de.ind.e = value,
         .reg_h => self.registers.hl.ind.h = value,
         .reg_l => self.registers.hl.ind.l = value,
+
         .ptr_bc => self.mmu.write(u8, self.registers.bc.all, value),
         .ptr_de => self.mmu.write(u8, self.registers.de.all, value),
         .ptr_hl => self.mmu.write(u8, self.registers.hl.all, value),
-        .mem_u8 => self.mmu.write(u8, self.registers.pc +% 1, value),
-        .ptr_mem_u16 => self.mmu.write(u8, self.get_arg_16(.mem_u16), value),
+
         .ptr_high_c => self.mmu.write(u8, @as(u16, 0xFF00) +% self.registers.bc.ind.c, value),
-        .ptr_high_u8 => self.mmu.write(u8, @as(u16, 0xFF00) +% self.get_arg_8(.mem_u8), value),
-        else => self.get_8bit_argument_address(target).*,
-    };
-}
+        .ptr_high_u8 => self.mmu.write(u8, @as(u16, 0xFF00) +% self.get(.mem_u8), value),
+        .ptr_mem_u16 => self.mmu.write(u8, self.get(.mem_u16), value),
 
-fn get_arg_16(self: *Self, comptime target: IxArgument) u16 {
-    return switch (target) {
-        .reg_af => self.registers.af.all,
-        .reg_bc => self.registers.bc.all,
-        .reg_de => self.registers.de.all,
-        .reg_hl => self.registers.hl.all,
-        .reg_sp => self.registers.sp,
-        .reg_pc => self.registers.pc,
-        .ptr_bc => self.mmu.read(u16, self.registers.bc.all),
-        .ptr_de => self.mmu.read(u16, self.registers.de.all),
-        .ptr_hl => self.mmu.read(u16, self.registers.hl.all),
-        .mem_u16 => self.mmu.read(u16, self.registers.pc +% 1),
-        .ptr_mem_u16 => self.mmu.read(u16, self.get_arg_16(.mem_u16)),
-        else => @compileError("invalid 16bit argument"),
-    };
-}
-
-fn set_arg_16(self: *Self, comptime target: IxArgument, value: u16) void {
-    return switch (target) {
+        // 16 Bit arguments
         .reg_af => self.registers.af.all = value,
         .reg_bc => self.registers.bc.all = value,
         .reg_de => self.registers.de.all = value,
         .reg_hl => self.registers.hl.all = value,
+
         .reg_sp => self.registers.sp = value,
         .reg_pc => self.registers.pc = value,
-        .ptr_bc => self.mmu.write(u16, self.registers.bc.all, value),
-        .ptr_de => self.mmu.write(u16, self.registers.de.all, value),
-        .ptr_hl => self.mmu.write(u16, self.registers.hl.all, value),
-        .mem_u16 => self.mmu.write(u16, self.registers.pc +% 1, value),
-        .ptr_mem_u16 => self.mmu.write(u16, self.get_arg_16(.mem_u16), value),
-        else => @compileError("invalid 16bit argument"),
+
+        .mem_u16 => self.mmu.write(u16, self.registers.pc - 2, value),
+        .ptr16_mem_u16 => self.mmu.write(u16, self.get(.mem_u16), value),
+
+        // Readonly arguments
+        else => @compileError("Invalid argument to set"),
     };
 }
 
 fn increment(self: *Self, comptime arg: IxArgument) void {
-    if (comptime is_arg_16(arg)) {
-        self.set_arg_16(arg, self.get_arg_16(arg) +% 1);
-    } else {
-        const value = self.get_arg_8(arg);
-        self.set_arg_8(arg, value +% 1);
+    const value = self.get(arg);
 
+    self.set(arg, value +% 1);
+
+    if (arg_type(arg) == u8) {
         self.flags().zero = value == 0xFF;
         self.flags().nsub = false;
         self.flags().half = (value & 0xF) == 0xF;
@@ -188,12 +184,11 @@ fn increment(self: *Self, comptime arg: IxArgument) void {
 }
 
 fn decrement(self: *Self, comptime arg: IxArgument) void {
-    if (comptime is_arg_16(arg)) {
-        self.set_arg_16(arg, self.get_arg_16(arg) -% 1);
-    } else {
-        const value = self.get_arg_8(arg);
-        self.set_arg_8(arg, value -% 1);
+    const value = self.get(arg);
 
+    self.set(arg, value -% 1);
+
+    if (arg_type(arg) == u8) {
         self.flags().zero = value == 0x01;
         self.flags().nsub = true;
         self.flags().half = (value & 0xF) == 0x0;
@@ -201,14 +196,10 @@ fn decrement(self: *Self, comptime arg: IxArgument) void {
 }
 
 fn load(self: *Self, comptime to: IxArgument, comptime from: IxArgument) void {
-    if (comptime is_arg_16(from)) {
-        self.set_arg_16(to, self.get_arg_16(from));
-    } else {
-        self.set_arg_8(to, self.get_arg_8(from));
-    }
+    self.set(to, self.get(from));
 }
 
-fn load_decrement(
+fn loadDecrement(
     self: *Self,
     comptime to: IxArgument,
     comptime from: IxArgument,
@@ -218,7 +209,7 @@ fn load_decrement(
     self.decrement(incr);
 }
 
-fn load_increment(
+fn loadIncrement(
     self: *Self,
     comptime to: IxArgument,
     comptime from: IxArgument,
@@ -248,19 +239,19 @@ fn arithmetic(
     comptime oper: ArithmeticOperation,
     comptime rhs: IxArgument,
 ) void {
-    comptime if (is_arg_16(lhs) or is_arg_16(rhs)) {
+    comptime if (arg_type(lhs) != u8 or arg_type(rhs) != u8) {
         @compileError("arithmetic arguments can only be 8-bit");
     };
 
-    const left = self.get_arg_8(lhs);
-    const right = self.get_arg_8(rhs);
+    const left = self.get(lhs);
+    const right = self.get(rhs);
     const carry = @boolToInt(self.registers.af.ind.f.carry);
 
     const result = switch (oper) {
         .addition => left +% right,
-        .addition_carry => left +% (right +% carry),
+        .addition_carry => left +% right +% carry,
         .subtract => left -% right,
-        .subtract_carry => left -% (right +% carry),
+        .subtract_carry => left -% right -% carry,
         .bitwise_and => left & right,
         .bitwise_or => left | right,
         .bitwise_xor => left ^ right,
@@ -275,10 +266,10 @@ fn arithmetic(
     };
 
     self.flags().half = switch (oper) {
-        .addition => @intCast(u16, left) + right > 0xF,
-        .addition_carry => @intCast(u16, left) + right + carry > 0xF,
+        .addition => (left & 0xF) + (right & 0xF) > 0xF,
+        .addition_carry => (left & 0xF) + ((right +% carry) & 0xF) > 0xF,
         .subtract, .compare => (right & 0xF) > left & 0xF,
-        .subtract_carry => (right & 0xF) > (left & 0xF) + carry,
+        .subtract_carry => (right & 0xF) > (left +% carry) & 0xF,
         .bitwise_and => true,
         .bitwise_or, .bitwise_xor => false,
     };
@@ -286,46 +277,45 @@ fn arithmetic(
     var spare: u8 = undefined;
 
     self.flags().carry = switch (oper) {
-        .addition, .addition_carry => @addWithOverflow(u8, left, right, &spare),
-        .subtract, .subtract_carry, .compare => @subWithOverflow(u8, left, right, &spare),
+        .addition => @addWithOverflow(u8, left, right, &spare),
+        .subtract, .compare => @subWithOverflow(u8, left, right, &spare),
+        .addition_carry => @addWithOverflow(u8, left, right +% carry, &spare),
+        .subtract_carry => @subWithOverflow(u8, left, right +% carry, &spare),
         else => false,
     };
 
-    if (oper != .compare) {
-        self.set_arg_8(lhs, result);
-    }
+    // Compare discards result, set it for any other operation
+    if (oper != .compare) self.set(lhs, result);
 }
 
-fn jump_relative(self: *Self, comptime cond: IxCondition, comptime arg: IxArgument) void {
-    if (!self.fulfills_condition(cond)) {
-        return;
-    }
+fn jumpRelative(self: *Self, comptime cond: IxCondition, comptime arg: IxArgument) void {
+    // Condition not met means not doing anything.
+    if (!self.fulfills(cond)) return;
+
+    self.registers.br = true;
 
     if (arg == .mem_i8) {
-        const offset = @intCast(i16, self.get_arg_8_signed());
+        const offset = @intCast(i16, self.get(arg));
         self.registers.pc +%= @bitCast(u16, offset);
     } else {
-        self.registers.pc +%= self.get_8bit_argument_value(arg);
+        self.registers.pc +%= self.get(arg);
     }
 }
 
-fn jump_position(self: *Self, comptime cond: IxCondition, comptime arg: IxArgument) void {
-    const byte_length = if (arg == .mem_u16) 3 else 1;
-
-    if (self.fulfills_condition(cond)) {
-        self.registers.pc = self.get_arg_16(arg);
-    } else {
-        self.registers.pc +%= byte_length;
+fn jumpPosition(self: *Self, comptime cond: IxCondition, comptime arg: IxArgument) void {
+    if (self.fulfills(cond)) {
+        self.registers.br = true;
+        self.registers.pc = self.get(arg);
     }
 }
 
-fn push_stack(self: *Self, comptime arg: IxArgument) void {
+fn pushStack(self: *Self, comptime arg: IxArgument) void {
     self.registers.sp -%= 2;
-    self.mmu.write(u16, self.registers.sp, self.get_arg_16(arg));
+    self.mmu.write(u16, self.registers.sp, self.get(arg));
 }
 
-fn pop_stack(self: *Self, comptime arg: IxArgument) void {
-    self.set_arg_16(arg, self.mmu.read(u16, self.registers.sp));
+fn popStack(self: *Self, comptime arg: IxArgument) void {
+    self.set(arg, self.mmu.read(u16, self.registers.sp));
     self.registers.sp +%= 2;
 
     // For some reason lower nibble of F is hardwired to 0.
@@ -333,28 +323,23 @@ fn pop_stack(self: *Self, comptime arg: IxArgument) void {
 }
 
 fn call(self: *Self, comptime cond: IxCondition, comptime arg: IxArgument) void {
-    const byte_length = 3;
-
-    if (self.fulfills_condition(cond)) {
-        self.registers.sp -%= 2;
-        self.mmu.write(u16, self.registers.sp, self.registers.pc +% byte_length);
+    if (self.fulfills(cond)) {
+        self.registers.br = true;
+        self.pushStack(.reg_pc);
         self.load(.reg_pc, arg);
-    } else {
-        self.registers.pc +%= byte_length;
     }
 }
 
-fn return_call(self: *Self, comptime cond: IxCondition) void {
-    if (self.fulfills_condition(cond)) {
-        self.pop_stack(.reg_pc);
-    } else {
-        self.registers.pc +%= 1;
+fn returnCall(self: *Self, comptime cond: IxCondition) void {
+    if (self.fulfills(cond)) {
+        self.registers.br = true;
+        self.popStack(.reg_pc);
     }
 }
 
-fn return_call_ei(self: *Self) void {
-    self.return_call(.always);
-    self.interrupt_master_enable(true);
+fn returnCallEi(self: *Self) void {
+    self.returnCall(.always);
+    self.interruptMasterEnable(true);
 }
 
 // TODO Make redundant enums anonymous parameter types.
@@ -369,19 +354,14 @@ const RestartAddr = enum(u8) {
     x28 = 0x28,
     x30 = 0x30,
     x38 = 0x38,
-    x40 = 0x40,
-    x48 = 0x48,
-    x50 = 0x50,
-    x58 = 0x58,
-    x60 = 0x60,
 };
 
 fn restart(self: *Self, comptime addr: RestartAddr) void {
-    self.push_stack(.reg_pc);
+    self.pushStack(.reg_pc);
     self.registers.pc = @enumToInt(addr);
 }
 
-fn decimal_adjust(self: *Self) void {
+fn decimalAdjustAddition(self: *Self) void {
     if (self.flags().nsub) {
         if (self.flags().carry) self.registers.af.ind.a -%= 0x60;
         if (self.flags().half) self.registers.af.ind.a -%= 0x06;
@@ -400,33 +380,33 @@ fn decimal_adjust(self: *Self) void {
     self.flags().half = false;
 }
 
-fn complement(self: *Self, comptime arg: IxArgument) void {
+fn complementAccum(self: *Self, comptime arg: IxArgument) void {
     self.flags().nsub = true;
     self.flags().half = true;
-    self.set_arg_8(arg, ~self.get_arg_8(arg));
+    self.set(arg, ~self.get(arg));
 }
 
-fn complement_carry_flag(self: *Self) void {
+fn complementCarryFlag(self: *Self) void {
     self.flags().nsub = false;
     self.flags().half = false;
     self.flags().carry = !self.flags().carry;
 }
 
-fn set_carry_flag(self: *Self) void {
+fn setCarryFlag(self: *Self) void {
     self.flags().nsub = false;
     self.flags().half = false;
     self.flags().carry = true;
 }
 
-fn add_to_hl_register(self: *Self, comptime arg: IxArgument) void {
+fn hlRegisterAddition(self: *Self, comptime arg: IxArgument) void {
     const hl = &self.registers.hl.all;
-    const value = self.get_arg_16(arg);
+    const value = self.get(arg);
 
     var result: u16 = undefined;
     var carried = @addWithOverflow(u16, hl.*, value, &result);
 
     self.flags().nsub = false;
-    self.flags().half = (hl.* & 0xFF) + (value & 0xFF) >= 0xFF;
+    self.flags().half = (hl.* & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
     self.flags().carry = carried;
 
     hl.* = result;
@@ -440,19 +420,17 @@ const StackPointerModifyOper = enum {
     load_to_hl,
 };
 
-fn stack_pointer_modify(self: *Self, comptime oper: StackPointerModifyOper) void {
-    const offset = self.get_arg_8_signed();
-    const cast_offset = @bitCast(u16, @intCast(i16, offset));
+fn stackPointerModify(self: *Self, comptime oper: StackPointerModifyOper) void {
+    const offset = @bitCast(u16, @intCast(i16, self.get(.mem_i8)));
 
     var result: u16 = undefined;
+    const overflow = @addWithOverflow(u16, self.registers.sp, offset, &result);
 
-    const overflow = @addWithOverflow(u16, self.registers.sp, cast_offset, &result);
-
-    const half_overflow = (self.registers.sp & 0xFF) + @bitCast(u8, offset) > 0xFF;
+    const half_sum = (self.registers.sp & 0x0FFF) + (offset & 0x0FFF);
 
     self.flags().zero = false;
     self.flags().nsub = false;
-    self.flags().half = half_overflow;
+    self.flags().half = half_sum > 0x0FFF;
     self.flags().carry = overflow;
 
     switch (oper) {
@@ -461,22 +439,25 @@ fn stack_pointer_modify(self: *Self, comptime oper: StackPointerModifyOper) void
     }
 }
 
-fn interrupt_master_enable(self: *Self, comptime enabled: bool) void {
+fn interruptMasterEnable(self: *Self, comptime enabled: bool) void {
     self.registers.ime = enabled;
 }
 
-pub fn step_instruction(self: *Self) usize {
+pub fn stepInstruction(self: *Self) usize {
     const ix = self.mmu.read(u8, self.registers.pc);
 
     if (ix == 0xCB) {
         self.registers.pc += 1;
-        return self.step_prefixed_instruction();
+        return self.stepPrefixedInstruction();
     }
 
-    const details = instructions_details(ix) orelse std.debug.panic(
+    const details = instructionsDetails(ix) orelse std.debug.panic(
         "Unknown '0x{X:0>2}' @ ${X:0>4}\n",
         .{ ix, self.registers.pc },
     );
+
+    // Advance the program counter
+    self.registers.pc +%= details.byte_length;
 
     switch (ix) {
         // --------------------
@@ -486,8 +467,8 @@ pub fn step_instruction(self: *Self) usize {
         0x00 => {}, // Noop
         0x10 => {}, // Stop
         0x76 => {}, // Halt
-        0xF3 => self.interrupt_master_enable(false),
-        0xFB => self.interrupt_master_enable(true),
+        0xF3 => self.interruptMasterEnable(false),
+        0xFB => self.interruptMasterEnable(true),
         0xCB => unreachable, // Second table prefix
 
         // ---------------------
@@ -505,19 +486,19 @@ pub fn step_instruction(self: *Self) usize {
 
         0x0A => self.load(.reg_a, .ptr_bc),
         0x1A => self.load(.reg_a, .ptr_de),
-        0x2A => self.load_increment(.reg_a, .ptr_hl, .reg_hl),
-        0x3A => self.load_decrement(.reg_a, .ptr_hl, .reg_hl),
+        0x2A => self.loadIncrement(.reg_a, .ptr_hl, .reg_hl),
+        0x3A => self.loadDecrement(.reg_a, .ptr_hl, .reg_hl),
 
         0x02 => self.load(.ptr_bc, .reg_a),
         0x12 => self.load(.ptr_de, .reg_a),
-        0x22 => self.load_increment(.ptr_hl, .reg_a, .reg_hl),
-        0x32 => self.load_decrement(.ptr_hl, .reg_a, .reg_hl),
+        0x22 => self.loadIncrement(.ptr_hl, .reg_a, .reg_hl),
+        0x32 => self.loadDecrement(.ptr_hl, .reg_a, .reg_hl),
 
         0x01 => self.load(.reg_bc, .mem_u16),
         0x11 => self.load(.reg_de, .mem_u16),
         0x21 => self.load(.reg_hl, .mem_u16),
         0x31 => self.load(.reg_sp, .mem_u16),
-        0x08 => self.load(.ptr_mem_u16, .reg_sp),
+        0x08 => self.load(.ptr16_mem_u16, .reg_sp),
 
         0x40 => self.load(.reg_b, .reg_b),
         0x41 => self.load(.reg_b, .reg_c),
@@ -708,56 +689,56 @@ pub fn step_instruction(self: *Self) usize {
         0xF6 => self.arithmetic(.reg_a, .bitwise_or, .mem_u8),
         0xFE => self.arithmetic(.reg_a, .compare, .mem_u8),
 
-        0x09 => self.add_to_hl_register(.reg_bc),
-        0x19 => self.add_to_hl_register(.reg_de),
-        0x29 => self.add_to_hl_register(.reg_hl),
-        0x39 => self.add_to_hl_register(.reg_sp),
-        0xE8 => self.stack_pointer_modify(.shift),
-        0xF8 => self.stack_pointer_modify(.load_to_hl),
+        0x09 => self.hlRegisterAddition(.reg_bc),
+        0x19 => self.hlRegisterAddition(.reg_de),
+        0x29 => self.hlRegisterAddition(.reg_hl),
+        0x39 => self.hlRegisterAddition(.reg_sp),
+        0xE8 => self.stackPointerModify(.shift),
+        0xF8 => self.stackPointerModify(.load_to_hl),
 
         // ----------------------
         // Decimal instruction
         // ----------------------
 
-        0x27 => self.decimal_adjust(),
-        0x2F => self.complement(.reg_a),
-        0x37 => self.set_carry_flag(),
-        0x3F => self.complement_carry_flag(),
+        0x27 => self.decimalAdjustAddition(),
+        0x2F => self.complementAccum(.reg_a),
+        0x37 => self.setCarryFlag(),
+        0x3F => self.complementCarryFlag(),
 
         // ----------------------
         // RLCA / RLA instruction
         // ----------------------
 
-        0x07 => self.bit_shift(.left, .old_bit, .reg_a),
-        0x17 => self.bit_shift(.left, .old_carry, .reg_a),
-        0x0F => self.bit_shift(.right, .old_bit, .reg_a),
-        0x1F => self.bit_shift(.right, .old_carry, .reg_a),
+        0x07 => self.bitShiftA(.left, .old_bit),
+        0x17 => self.bitShiftA(.left, .old_carry),
+        0x0F => self.bitShiftA(.right, .old_bit),
+        0x1F => self.bitShiftA(.right, .old_carry),
 
         // -----------------------
         // Jumps / Calls / Returns
         // -----------------------
 
-        0xC5 => self.push_stack(.reg_bc),
-        0xD5 => self.push_stack(.reg_de),
-        0xE5 => self.push_stack(.reg_hl),
-        0xF5 => self.push_stack(.reg_af),
+        0xC5 => self.pushStack(.reg_bc),
+        0xD5 => self.pushStack(.reg_de),
+        0xE5 => self.pushStack(.reg_hl),
+        0xF5 => self.pushStack(.reg_af),
 
-        0xC1 => self.pop_stack(.reg_bc),
-        0xD1 => self.pop_stack(.reg_de),
-        0xE1 => self.pop_stack(.reg_hl),
-        0xF1 => self.pop_stack(.reg_af),
+        0xC1 => self.popStack(.reg_bc),
+        0xD1 => self.popStack(.reg_de),
+        0xE1 => self.popStack(.reg_hl),
+        0xF1 => self.popStack(.reg_af),
 
-        0x18 => self.jump_relative(.always, .mem_i8),
-        0x28 => self.jump_relative(.zero, .mem_i8),
-        0x20 => self.jump_relative(.not_zero, .mem_i8),
-        0x38 => self.jump_relative(.carry, .mem_i8),
-        0x30 => self.jump_relative(.not_carry, .mem_i8),
-        0xC3 => self.jump_position(.always, .mem_u16),
-        0xCA => self.jump_position(.zero, .mem_u16),
-        0xC2 => self.jump_position(.not_zero, .mem_u16),
-        0xDA => self.jump_position(.carry, .mem_u16),
-        0xD2 => self.jump_position(.not_carry, .mem_u16),
-        0xE9 => self.jump_position(.always, .reg_hl),
+        0x18 => self.jumpRelative(.always, .mem_i8),
+        0x28 => self.jumpRelative(.zero, .mem_i8),
+        0x20 => self.jumpRelative(.not_zero, .mem_i8),
+        0x38 => self.jumpRelative(.carry, .mem_i8),
+        0x30 => self.jumpRelative(.not_carry, .mem_i8),
+        0xC3 => self.jumpPosition(.always, .mem_u16),
+        0xCA => self.jumpPosition(.zero, .mem_u16),
+        0xC2 => self.jumpPosition(.not_zero, .mem_u16),
+        0xDA => self.jumpPosition(.carry, .mem_u16),
+        0xD2 => self.jumpPosition(.not_carry, .mem_u16),
+        0xE9 => self.jumpPosition(.always, .reg_hl),
 
         0xCD => self.call(.always, .mem_u16),
         0xCC => self.call(.zero, .mem_u16),
@@ -765,12 +746,12 @@ pub fn step_instruction(self: *Self) usize {
         0xDC => self.call(.carry, .mem_u16),
         0xD4 => self.call(.not_carry, .mem_u16),
 
-        0xD9 => self.return_call_ei(),
-        0xC9 => self.return_call(.always),
-        0xC8 => self.return_call(.zero),
-        0xC0 => self.return_call(.not_zero),
-        0xD8 => self.return_call(.carry),
-        0xD0 => self.return_call(.not_carry),
+        0xD9 => self.returnCallEi(),
+        0xC9 => self.returnCall(.always),
+        0xC8 => self.returnCall(.zero),
+        0xC0 => self.returnCall(.not_zero),
+        0xD8 => self.returnCall(.carry),
+        0xD0 => self.returnCall(.not_carry),
 
         0xC7 => self.restart(.x00),
         0xCF => self.restart(.x08),
@@ -787,10 +768,12 @@ pub fn step_instruction(self: *Self) usize {
         ),
     }
 
-    // Advance the program counter
-    self.registers.pc +%= details.byte_length;
-
-    return details.clock_cycles;
+    if (self.registers.br) {
+        self.registers.br = false;
+        return details.branch_cycles;
+    } else {
+        return details.clock_cycles;
+    }
 }
 
 // TODO Make redundant enums anonymous parameter types.
@@ -799,13 +782,13 @@ pub fn step_instruction(self: *Self) usize {
 const BitShiftDirection = enum { left, right };
 const BitShiftNewBitValue = enum { reset, old_carry, old_bit, previous_bit };
 
-fn bit_shift(
+fn bitShift(
     self: *Self,
     comptime direction: BitShiftDirection,
     comptime new_bit_value: BitShiftNewBitValue,
     comptime arg: IxArgument,
 ) void {
-    const value = self.get_arg_8(arg);
+    const value = self.get(arg);
 
     const old_carry = @boolToInt(self.flags().carry);
 
@@ -836,11 +819,20 @@ fn bit_shift(
     self.flags().half = false;
     self.flags().carry = old_bit == 1;
 
-    self.set_arg_8(arg, result);
+    self.set(arg, result);
 }
 
-fn bit_swap(self: *Self, comptime arg: IxArgument) void {
-    const value = self.get_arg_8(arg);
+fn bitShiftA(
+    self: *Self,
+    comptime direction: BitShiftDirection,
+    comptime new_bit_value: BitShiftNewBitValue,
+) void {
+    self.bitShift(direction, new_bit_value, .reg_a);
+    self.flags().zero = false;
+}
+
+fn bitSwap(self: *Self, comptime arg: IxArgument) void {
+    const value = self.get(arg);
     const result = (value << 4) | (value >> 4);
 
     self.flags().zero = result == 0;
@@ -848,35 +840,38 @@ fn bit_swap(self: *Self, comptime arg: IxArgument) void {
     self.flags().half = false;
     self.flags().carry = false;
 
-    self.set_arg_8(arg, result);
+    self.set(arg, result);
 }
 
-fn bit_test(self: *Self, comptime bit: u3, comptime arg: IxArgument) void {
-    const byte = self.get_arg_8(arg);
+fn bitTest(self: *Self, comptime bit: u3, comptime arg: IxArgument) void {
+    const byte = self.get(arg);
 
     self.flags().zero = (byte & (0b1 << bit)) == 0;
     self.flags().nsub = false;
     self.flags().half = true;
 }
 
-fn bit_set(self: *Self, comptime bit: u3, comptime arg: IxArgument) void {
-    const value = self.get_arg_8(arg);
-    self.set_arg_8(arg, value | (0b1 << bit));
+fn bitSet(self: *Self, comptime bit: u3, comptime arg: IxArgument) void {
+    const value = self.get(arg);
+    self.set(arg, value | (0b1 << bit));
 }
 
-fn bit_reset(self: *Self, comptime bit: u3, comptime arg: IxArgument) void {
-    const value = self.get_arg_8(arg);
+fn bitClear(self: *Self, comptime bit: u3, comptime arg: IxArgument) void {
+    const value = self.get(arg);
     const mask: u8 = 0b1 << bit;
-    self.set_arg_8(arg, value & ~mask);
+    self.set(arg, value & ~mask);
 }
 
-fn step_prefixed_instruction(self: *Self) usize {
+fn stepPrefixedInstruction(self: *Self) usize {
     const ix = self.mmu.read(u8, self.registers.pc);
 
-    const details = prefixed_instructions_details(ix) orelse std.debug.panic(
+    const details = prefixedInstructionsDetails(ix) orelse std.debug.panic(
         "Unknown '0xCB 0x{X:0>2}' @ ${X:0>4}\n",
         .{ ix, self.registers.pc },
     );
+
+    // Advance the program counter
+    self.registers.pc +%= details.byte_length;
 
     const repeated_registers = comptime [_]IxArgument{
         .reg_b, .reg_c, .reg_d,  .reg_e,
@@ -887,62 +882,60 @@ fn step_prefixed_instruction(self: *Self) usize {
     // See: https://github.com/ziglang/zig/issues/7224
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x00 == ix) {
-        self.bit_shift(.left, .old_bit, repeated_registers[op % 8]);
+        self.bitShift(.left, .old_bit, repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x08 == ix) {
-        self.bit_shift(.right, .old_bit, repeated_registers[op % 8]);
+        self.bitShift(.right, .old_bit, repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x10 == ix) {
-        self.bit_shift(.left, .old_carry, repeated_registers[op % 8]);
+        self.bitShift(.left, .old_carry, repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x18 == ix) {
-        self.bit_shift(.right, .old_carry, repeated_registers[op % 8]);
+        self.bitShift(.right, .old_carry, repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x20 == ix) {
-        self.bit_shift(.left, .reset, repeated_registers[op % 8]);
+        self.bitShift(.left, .reset, repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x28 == ix) {
-        self.bit_shift(.right, .previous_bit, repeated_registers[op % 8]);
+        self.bitShift(.right, .previous_bit, repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x30 == ix) {
-        self.bit_swap(repeated_registers[op % 8]);
+        self.bitSwap(repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8]void)) |_, op| if (op + 0x38 == ix) {
-        self.bit_shift(.right, .reset, repeated_registers[op % 8]);
+        self.bitShift(.right, .reset, repeated_registers[op % 8]);
     };
 
     inline for (std.mem.zeroes([8 * 8]void)) |_, op| if (op + 0x40 == ix) {
         const bit = @truncate(u3, op / 8);
         const arg = repeated_registers[op % 8];
-        self.bit_test(bit, arg);
+        self.bitTest(bit, arg);
     };
 
     inline for (std.mem.zeroes([8 * 8]void)) |_, op| if (op + 0x80 == ix) {
         const bit = @truncate(u3, op / 8);
         const arg = repeated_registers[op % 8];
-        self.bit_reset(bit, arg);
+        self.bitClear(bit, arg);
     };
 
     inline for (std.mem.zeroes([8 * 8]void)) |_, op| if (op + 0xC0 == ix) {
         const bit = @truncate(u3, op / 8);
         const arg = repeated_registers[op % 8];
-        self.bit_set(bit, arg);
+        self.bitSet(bit, arg);
     };
 
-    // Advance the program counter
-    self.registers.pc +%= details.byte_length;
-
+    // Prefixed instructions never branch
     return details.clock_cycles;
 }
 
-pub fn step_timers(self: *Self, clocks: usize) void {
+pub fn stepTimers(self: *Self, clocks: usize) void {
     self.timer_div_clock += clocks;
 
     // TODO fix this.
@@ -951,18 +944,18 @@ pub fn step_timers(self: *Self, clocks: usize) void {
 
     if (self.timer_div_clock >= one_frame) {
         self.timer_div_clock %= one_frame;
-        self.mmu.io_register(.timer_divider).* +%= 1;
+        self.mmu.ioRegister(.timer_divider).* +%= 1;
     }
 
-    if (!self.mmu.io_timer_control().enabled) {
+    if (!self.mmu.ioTimerControl().enabled) {
         return;
     }
 
     self.timer_conf_clock += clocks;
 
-    const timer_counter = self.mmu.io_register(.timer_counter);
+    const timer_counter = self.mmu.ioRegister(.timer_counter);
 
-    const increment_limit: usize = switch (self.mmu.io_timer_control().mode) {
+    const increment_limit: usize = switch (self.mmu.ioTimerControl().mode) {
         .fastest => one_frame / 16,
         .slowest => one_frame * 4,
         .fast => one_frame / 4,
@@ -975,36 +968,37 @@ pub fn step_timers(self: *Self, clocks: usize) void {
         if (timer_counter.* < 0xFF) {
             timer_counter.* +%= 1;
         } else {
-            timer_counter.* = self.mmu.io_register(.timer_modulo).*;
-            self.mmu.fire_interrupt(.timer);
+            timer_counter.* = self.mmu.ioRegister(.timer_modulo).*;
+            self.mmu.fireInterrupt(.timer);
         }
     }
 }
 
-pub fn step_interrupts(self: *Self) void {
+pub fn stepInterrupts(self: *Self) void {
     if (!self.registers.ime) {
         return; // All interrupts are disabled.
     }
 
-    const irrpt_flag = self.mmu.io_interrupt_flag();
-    const irrpt_enable = self.mmu.io_interrupt_enable();
+    const irrpt_flag = self.mmu.ioInterruptFlag();
+    const irrpt_enable = self.mmu.ioInterruptEnable();
 
     inline for (comptime std.enums.values(Interrupt)) |irrpt| {
-        if (irrpt_enable.is_set(irrpt) and irrpt_flag.is_set(irrpt)) {
+        if (irrpt_enable.isSet(irrpt) and irrpt_flag.isSet(irrpt)) {
             // Disable all interrupts.
-            self.interrupt_master_enable(false);
+            self.interruptMasterEnable(false);
 
             // Set the interrupt as handled in the interrupt flags.
-            self.mmu.io_interrupt_flag().set(irrpt, false);
+            self.mmu.ioInterruptFlag().set(irrpt, false);
 
             // Restart to interrupt handling address.
-            self.restart(switch (irrpt) {
-                .v_blank => .x40,
-                .lcd_status => .x48,
-                .timer => .x50,
-                .serial => .x58,
-                .joypad => .x60,
-            });
+            self.pushStack(.reg_pc);
+            self.registers.pc = switch (irrpt) {
+                .v_blank => 0x40,
+                .lcd_status => 0x48,
+                .timer => 0x50,
+                .serial => 0x58,
+                .joypad => 0x60,
+            };
 
             return;
         }
@@ -1012,8 +1006,56 @@ pub fn step_interrupts(self: *Self) void {
 }
 
 pub fn step(self: *Self) usize {
-    const clocks = self.step_instruction();
-    self.step_timers(clocks);
-    self.step_interrupts();
+    const clocks = self.stepInstruction();
+    self.stepTimers(clocks);
+    self.stepInterrupts();
     return clocks;
+}
+
+test "add HL SP" {
+    std.debug.print("0x85: add A,L\n\n", .{});
+    std.debug.print("|-before -----|-after ----|\n", .{});
+    std.debug.print("|  A |  L | c |  A | flag |\n", .{});
+    std.debug.print("|-------------|-----------|\n", .{});
+
+    const values = [_]u8{
+        0x00, 0x01, 0x0F, 0x10, 0x1F, 0x7F, 0x80, 0xF0, 0xFF,
+    };
+
+    const BootRom = @embedFile("roms/dmg_boot.bin");
+    const GameRom = @embedFile("roms/gb-test-roms/cpu_instrs/individual/03-op sp,hl.gb");
+
+    var mmu = try MMU.init(std.testing.allocator, BootRom, GameRom);
+    defer mmu.deinit();
+
+    var cpu = try Self.init(&mmu, std.testing.allocator);
+    defer cpu.deinit();
+
+    for (values) |a| {
+        for (values) |l| {
+            for ([_]bool{ true, false }) |oc| {
+                cpu.flags().zero = false;
+                cpu.flags().nsub = false;
+                cpu.flags().half = false;
+                cpu.flags().carry = oc;
+
+                cpu.registers.af.ind.a = a;
+                cpu.registers.hl.ind.l = l;
+
+                cpu.arithmetic(.reg_a, .addition_carry, .reg_l);
+
+                const z: u8 = if (flags(&cpu).zero) 'z' else '.';
+                const n: u8 = if (flags(&cpu).nsub) 'n' else '.';
+                const h: u8 = if (flags(&cpu).half) 'h' else '.';
+                const c: u8 = if (flags(&cpu).carry) 'c' else '.';
+
+                const oldc: u8 = if (oc) 'c' else '.';
+
+                std.debug.print(
+                    "| {X:0>2} | {X:0>2} | {c} | {X:0>2} | {c}{c}{c}{c} |\n",
+                    .{ a, l, oldc, cpu.registers.af.ind.a, z, n, h, c },
+                );
+            }
+        }
+    }
 }

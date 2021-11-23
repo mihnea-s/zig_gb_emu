@@ -21,6 +21,8 @@ pub const Registers = struct {
 
     ime: bool = true, // interrupts enabled
 
+    br: bool = false, // a branch occurred
+
     af: packed union {
         all: u16,
         ind: packed struct {
@@ -92,7 +94,7 @@ pub const InterruptFlags = packed struct {
     joypad: bool,
     unused: u4,
 
-    pub fn is_set(self: *@This(), comptime irrpt: Interrupt) bool {
+    pub fn isSet(self: *@This(), comptime irrpt: Interrupt) bool {
         return @field(self, comptime switch (irrpt) {
             .v_blank => "v_blank",
             .lcd_status => "lcd_status",
@@ -144,6 +146,7 @@ pub const Instruction = struct {
     mnemonic: []const u8,
     byte_length: u16,
     clock_cycles: usize,
+    branch_cycles: usize,
 };
 
 fn instruction(
@@ -155,13 +158,24 @@ fn instruction(
         .mnemonic = mnemonic,
         .byte_length = byte_length,
         .clock_cycles = clock_cycles,
+        .branch_cycles = clock_cycles,
     };
 }
 
-fn control_flow(mnemonic: []const u8, clock_cycles: usize) Instruction {
+fn instructionBranch(
+    mnemonic: []const u8,
+    byte_length: u16,
+    clock_cycles: usize,
+    branch_cycles: usize,
+) Instruction {
     // Control flow instructions move the PC manually, so
     // we shouldn't move it based on instruction byte length.
-    return instruction(mnemonic, 0, clock_cycles);
+    return Instruction{
+        .mnemonic = mnemonic,
+        .byte_length = byte_length,
+        .clock_cycles = clock_cycles,
+        .branch_cycles = branch_cycles,
+    };
 }
 
 //
@@ -181,7 +195,7 @@ fn control_flow(mnemonic: []const u8, clock_cycles: usize) Instruction {
 //      V+/V-   - increment/decrement V after operation
 //
 
-pub fn instructions_details(ix: u8) ?Instruction {
+pub fn instructionsDetails(ix: u8) ?Instruction {
     return switch (ix) {
         // 0x00 instructions
         0x00 => instruction("nop", 1, 4),
@@ -210,7 +224,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x15 => instruction("dec D", 1, 4),
         0x16 => instruction("ld D %X", 2, 8),
         0x17 => instruction("rla", 1, 4),
-        0x18 => instruction("jr %Xi", 2, 10),
+        0x18 => instructionBranch("jr %Xi", 2, 8, 12),
         0x19 => instruction("add HL DE", 1, 8),
         0x1A => instruction("ld A (DE)", 1, 8),
         0x1B => instruction("dec DE", 1, 8),
@@ -220,7 +234,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x1F => instruction("rra", 1, 4),
 
         // 0x20 instructions
-        0x20 => instruction("jr NZ %Xi", 2, (8 + 12) / 2),
+        0x20 => instructionBranch("jr NZ %Xi", 2, 8, 12),
         0x21 => instruction("ld HL %XX", 3, 12),
         0x22 => instruction("ldi (HL) A", 1, 8),
         0x23 => instruction("inc HL", 1, 8),
@@ -228,7 +242,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x25 => instruction("dec H", 1, 4),
         0x26 => instruction("ld H %X", 2, 8),
         0x27 => instruction("daa", 1, 4),
-        0x28 => instruction("jr Z %Xi", 2, (8 + 12) / 2),
+        0x28 => instructionBranch("jr Z %Xi", 2, 8, 12),
         0x29 => instruction("add HL HL", 1, 8),
         0x2A => instruction("ldi A (HL)", 1, 8),
         0x2B => instruction("dec HL", 1, 8),
@@ -238,7 +252,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x2F => instruction("cpl", 1, 4),
 
         // 0x30 instructions
-        0x30 => instruction("jr NC %Xi", 2, (8 + 12) / 2),
+        0x30 => instructionBranch("jr NC %Xi", 2, 8, 12),
         0x31 => instruction("ld SP %XX", 3, 12),
         0x32 => instruction("ldd (HL) A", 1, 8),
         0x33 => instruction("inc sp", 1, 8),
@@ -246,7 +260,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0x35 => instruction("dec (HL)", 1, 12),
         0x36 => instruction("ld (HL) %X", 2, 12),
         0x37 => instruction("scf", 1, 4),
-        0x38 => instruction("jr C %Xi", 2, (8 + 12) / 2),
+        0x38 => instructionBranch("jr C %Xi", 2, 8, 12),
         0x39 => instruction("add HL SP", 1, 8),
         0x3A => instruction("ldd A (HL)", 1, 8),
         0x3B => instruction("dec SP", 1, 8),
@@ -400,40 +414,40 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xBF => instruction("cp A A", 1, 4),
 
         // 0xC0 instructions
-        0xC0 => control_flow("ret NZ", 14),
+        0xC0 => instructionBranch("ret NZ", 1, 8, 20),
         0xC1 => instruction("pop BC", 1, 12),
-        0xC2 => control_flow("jp NZ %XX", 14),
-        0xC3 => control_flow("jp %XX", 16),
-        0xC4 => control_flow("call NZ %XX", 16),
+        0xC2 => instructionBranch("jp NZ %XX", 3, 12, 16),
+        0xC3 => instruction("jp %XX", 3, 16),
+        0xC4 => instructionBranch("call NZ %XX", 3, 12, 24),
         0xC5 => instruction("push BC", 1, 16),
         0xC6 => instruction("add A %X", 2, 8),
-        0xC7 => control_flow("rst 00h", 16),
-        0xC8 => control_flow("ret Z", 14),
-        0xC9 => control_flow("ret", 16),
-        0xCA => control_flow("jp Z %XX", 14),
+        0xC7 => instruction("rst 00h", 1, 16),
+        0xC8 => instructionBranch("ret Z", 1, 8, 20),
+        0xC9 => instruction("ret", 1, 16),
+        0xCA => instructionBranch("jp Z %XX", 3, 12, 16),
         0xCB => unreachable, // Prefix
-        0xCC => control_flow("call Z %XX", 18),
-        0xCD => control_flow("call %XX", 24),
+        0xCC => instructionBranch("call Z %XX", 3, 12, 24),
+        0xCD => instruction("call %XX", 3, 24),
         0xCE => instruction("adc A %X", 2, 8),
-        0xCF => control_flow("rst 08h", 16),
+        0xCF => instruction("rst 08h", 1, 16),
 
         // 0xD0 instructions
-        0xD0 => control_flow("ret NC", (8 + 20) / 2),
+        0xD0 => instructionBranch("ret NC", 1, 8, 20),
         0xD1 => instruction("pop DE", 1, 12),
-        0xD2 => control_flow("jp NC %XX", (12 + 16) / 2),
+        0xD2 => instructionBranch("jp NC %XX", 3, 12, 16),
         0xD3 => null, // Non-existant
-        0xD4 => control_flow("call NC %XX", (12 + 24) / 2),
+        0xD4 => instructionBranch("call NC %XX", 3, 12, 24),
         0xD5 => instruction("push DE", 1, 16),
         0xD6 => instruction("sub A %X", 2, 8),
-        0xD7 => control_flow("rst 10h", 16),
-        0xD8 => control_flow("ret C", (8 + 16) / 2),
-        0xD9 => control_flow("reti", 16),
-        0xDA => control_flow("jp C %XX", (12 + 16) / 2),
+        0xD7 => instruction("rst 10h", 1, 16),
+        0xD8 => instructionBranch("ret C", 1, 8, 16),
+        0xD9 => instruction("reti", 1, 16),
+        0xDA => instructionBranch("jp C %XX", 3, 12, 16),
         0xDB => null, // Non-existant
-        0xDC => control_flow("call C %XX", (12 + 24) / 2),
+        0xDC => instructionBranch("call C %XX", 3, 12, 24),
         0xDD => null, // Non-existant
         0xDE => instruction("sbc A %X", 2, 8),
-        0xDF => control_flow("rst 18h", 16),
+        0xDF => instruction("rst 18h", 1, 16),
 
         // 0xE0 instructions
         0xE0 => instruction("ld ($FF00 + %X) A", 2, 12),
@@ -443,15 +457,15 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xE4 => null, // Non-existant
         0xE5 => instruction("push HL", 1, 16),
         0xE6 => instruction("and A %X", 2, 8),
-        0xE7 => control_flow("rst 20h", 16),
+        0xE7 => instruction("rst 20h", 1, 16),
         0xE8 => instruction("add SP %Xi", 2, 16),
-        0xE9 => control_flow("jp HL", 4),
+        0xE9 => instruction("jp HL", 1, 4),
         0xEA => instruction("ld (%XX) A", 3, 16),
         0xEB => null, // Non-existant
         0xEC => null, // Non-existant
         0xED => null, // Non-existant
         0xEE => instruction("xor A %X", 2, 8),
-        0xEF => control_flow("rst 28h", 16),
+        0xEF => instruction("rst 28h", 1, 16),
 
         // 0xF0 instructions
         0xF0 => instruction("ld A ($FF00 + %X)", 2, 12),
@@ -461,7 +475,7 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xF4 => null, // Non-existant
         0xF5 => instruction("push AF", 1, 16),
         0xF6 => instruction("or A %X", 2, 8),
-        0xF7 => control_flow("rst 30h", 16),
+        0xF7 => instruction("rst 30h", 1, 16),
         0xF8 => instruction("ld HL SP+%Xi", 2, 12),
         0xF9 => instruction("ld SP HL", 1, 8),
         0xFA => instruction("ld A (%XX)", 3, 16),
@@ -469,11 +483,11 @@ pub fn instructions_details(ix: u8) ?Instruction {
         0xFC => null, // Non-existant
         0xFD => null, // Non-existant
         0xFE => instruction("cp A %X", 2, 8),
-        0xFF => control_flow("rst 38h", 16),
+        0xFF => instruction("rst 38h", 1, 16),
     };
 }
 
-pub fn prefixed_instructions_details(ix: u8) ?Instruction {
+pub fn prefixedInstructionsDetails(ix: u8) ?Instruction {
     return switch (ix) {
         0x00 => instruction("rlc B", 1, 8),
         0x01 => instruction("rlc C", 1, 8),
