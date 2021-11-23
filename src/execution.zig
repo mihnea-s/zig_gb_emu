@@ -247,6 +247,8 @@ fn arithmetic(
     const right = self.get(rhs);
     const carry = @boolToInt(self.registers.af.ind.f.carry);
 
+    // FIXME ADC & SBC are implement wrong.
+
     const result = switch (oper) {
         .addition => left +% right,
         .addition_carry => left +% right +% carry,
@@ -422,6 +424,8 @@ const StackPointerModifyOper = enum {
 
 fn stackPointerModify(self: *Self, comptime oper: StackPointerModifyOper) void {
     const offset = @bitCast(u16, @intCast(i16, self.get(.mem_i8)));
+
+    // FIXME SP + i8 instructions are implemented incorrenctly.
 
     var result: u16 = undefined;
     const overflow = @addWithOverflow(u16, self.registers.sp, offset, &result);

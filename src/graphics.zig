@@ -27,6 +27,7 @@ const Sprite = packed struct {
 
 const SpriteTableStart: u16 = 0xFE00;
 const SpriteTableEnd: u16 = 0xFE9F;
+const SpriteTableCapacity: usize = 40;
 
 const PPUState = enum {
     h_blank,
@@ -52,6 +53,7 @@ allocator: *std.mem.Allocator,
 framebuffer: *[FramebufferSize]u8,
 
 line: u8,
+win_line: usize,
 dots: usize,
 ready: bool,
 state: PPUState,
@@ -66,6 +68,7 @@ pub fn init(mmu: *MMU, allocator: *std.mem.Allocator) !Self {
 
         .line = 0,
         .dots = 0,
+        .win_line = 0,
         .ready = false,
         .state = .h_blank,
     };
@@ -138,10 +141,39 @@ fn drawBackgroundPixelLine(self: *Self) void {
 }
 
 fn drawWindowPixelLine(self: *Self) void {
+    const lcd_control = self.mmu.ioLCDControl();
+
     const wx = self.mmu.ioRegister(.window_x).*;
     const wy = self.mmu.ioRegister(.window_y).*;
 
-    // TODO implement drawing of window layer.
+    if (self.line < wy) return;
+    if (FramebufferWidth - 7 < wx) return;
+
+    const palette = self.mmu.ioRegister(.bg_palette).*;
+    const tilemap = TileMapAddrs[lcd_control.window_tilemap];
+
+    const line_y = self.win_line;
+    self.win_line += 1;
+
+    var pixel_x: u8 = if (wx > 7) wx - 7 else 0;
+
+    while (pixel_x < FramebufferWidth) : (pixel_x += 1) {
+        const x = pixel_x + 7 - wx;
+        const y = line_y;
+
+        const id = self.mmu.read(u8, tilemap + @intCast(u16, y / 8) * 32 + (x / 8));
+
+        const tile_x = @intCast(u4, x % 8);
+        const tile_y = @intCast(u4, y % 8);
+
+        const pixel = self.readTilePixel(id, tile_x, tile_y, switch (lcd_control.bg_win_tiledata) {
+            0 => .block_1,
+            1 => .block_0,
+        });
+
+        const fb_index = @intCast(usize, self.line) * FramebufferWidth + pixel_x;
+        self.framebuffer[fb_index] = pixelColor(palette, pixel);
+    }
 }
 
 fn readSprite(self: *Self, id: u8) Sprite {
@@ -149,7 +181,47 @@ fn readSprite(self: *Self, id: u8) Sprite {
 }
 
 fn drawSpritesPixelLine(self: *Self) void {
-    // TODO implement drawing of sprites.
+    const lcd_control = self.mmu.ioLCDControl();
+    const sprite_height: u8 = if (lcd_control.sprites_tall) 16 else 8;
+
+    // FIXME drawing tall sprites is broken.
+    if (lcd_control.sprites_tall) return;
+
+    var sprite_id: u8 = 0;
+    var sprites_drawn: usize = 0;
+
+    while (sprite_id < SpriteTableCapacity) : (sprite_id += 1) {
+        const sprite = self.readSprite(sprite_id);
+
+        if (sprite.y_position > self.line + 16) continue;
+        if (sprite.y_position + sprite_height < self.line + 16) continue;
+
+        sprites_drawn += 1;
+
+        const palette = switch (sprite.attributes.palette) {
+            0 => self.mmu.ioRegister(.spr_palette_0).*,
+            1 => self.mmu.ioRegister(.spr_palette_1).*,
+        };
+
+        var sprx: u8 = 0;
+        const spry = self.line - (sprite.y_position - 16);
+
+        while (sprx < 8) : (sprx += 1) {
+            const pixel = self.readTilePixel(
+                sprite.tile_index,
+                @intCast(u4, sprx),
+                @intCast(u4, spry),
+                .block_0,
+            );
+
+            const pixel_x = sprite.x_position + sprx;
+
+            if (pixel_x < 8) continue;
+
+            const fb_index = @intCast(usize, self.line) * FramebufferWidth + pixel_x - 8;
+            self.framebuffer[fb_index] = pixelColor(palette, pixel);
+        }
+    }
 }
 
 fn drawPixelLine(self: *Self) void {
@@ -181,9 +253,10 @@ fn lineNext(self: *Self) void {
     }
 }
 
-fn lineReset(self: *Self) void {
-    self.line = 0xFF;
+fn finishFrame(self: *Self) void {
     self.ready = true;
+    self.line = 0xFF;
+    self.win_line = 0x0;
     self.lineNext();
 }
 
@@ -239,7 +312,7 @@ pub fn step(self: *Self, clocks: usize) bool {
 
             if (self.line == RenderLine) {
                 self.updateState(.oam_scan);
-                self.lineReset();
+                self.finishFrame();
             } else {
                 self.lineNext();
             }

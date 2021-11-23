@@ -11,7 +11,6 @@ const Debugger = @import("debugger.zig");
 // TODO:
 // - Fix timers
 // - Sprite drawing
-// - Window drawing
 // - Implement joypad
 // - Fix ADC, SBC instructions
 // - Fix SP + i8 instructions
