@@ -6,24 +6,40 @@ const MMU = @import("memory.zig");
 const PPU = @import("graphics.zig");
 const CPU = @import("execution.zig");
 
+const Debugger = @import("debugger.zig");
+
+// TODO:
+// - Fix timers
+// - Sprite drawing
+// - Window drawing
+// - Implement joypad
+// - Fix ADC, SBC instructions
+// - Fix SP + i8 instructions
+// - Implement MBC/ERam control
+
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var win = try window.Window.init(&gpa.allocator, .{});
-    defer win.deinit();
-
     var mmu = try MMU.init(&gpa.allocator, BootRom, GameRom);
     defer mmu.deinit();
-
-    // Set the game title to the window title.
-    try win.setTitle(mmu.gameTitle());
 
     var ppu = try PPU.init(&mmu, &gpa.allocator);
     defer ppu.deinit();
 
     var cpu = try CPU.init(&mmu, &gpa.allocator);
     defer cpu.deinit();
+
+    if (std.os.argv.len > 1) {
+        try Debugger.init(&gpa.allocator, &mmu, &ppu, &cpu).debug();
+        return;
+    }
+
+    var win = try window.Window.init(&gpa.allocator, .{});
+    defer win.deinit();
+
+    // Set the game title to the window title.
+    try win.setTitle(mmu.gameTitle());
 
     while (win.alive()) {
         const t_a = std.time.nanoTimestamp();
