@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn build(b: *std.build.Builder) void {
-    const exe = b.addExecutable("chipper", "src/main.zig");
+    const exe = b.addExecutable("zig_gb_emu", "src/main.zig");
 
     // Build options
     exe.setTarget(b.standardTargetOptions(.{}));
