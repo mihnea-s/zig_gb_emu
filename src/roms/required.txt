@@ -1,0 +1,5 @@
+Add the following roms to this folder:
+
+- boot.bin - gameboy boot bios (sha1: 4ed31ec6b0b175bb109c0eb5fd3d193da823339f)
+- game.bin - a game of your choosing, dr mario works well 
+            (sha1: f1006d6cf77469092f3b9f266d0a65da9c91ac42)

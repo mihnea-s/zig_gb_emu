@@ -6,12 +6,17 @@ usingnamespace @import("instructions.zig");
 
 const Self = @This();
 
+const TileSide: u8 = 8;
+
 const TileMapAddrs = [2]u16{
     0x9800, // 0 = 9800 -> 9BFF
     0x9C00, // 1 = 9C00 -> 9FFF
 };
 
 const Sprite = packed struct {
+    y_position: u8,
+    x_position: u8,
+    tile_index: u8,
     attributes: packed struct {
         unused: u4,
         palette: u1,
@@ -19,12 +24,9 @@ const Sprite = packed struct {
         y_flip: u1,
         priority: u1,
     },
-
-    tile_index: u8,
-    x_position: u8,
-    y_position: u8,
 };
 
+const SpriteLineLimit: usize = 10;
 const SpriteTableStart: u16 = 0xFE00;
 const SpriteTableEnd: u16 = 0xFE9F;
 const SpriteTableCapacity: usize = 40;

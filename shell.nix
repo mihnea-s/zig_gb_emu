@@ -1,10 +1,7 @@
-{ 
-    pkgs ? import <nixpkgs> {},
-    upkgs ? import <nixos-unstable> {},
-}:
+{ pkgs ? import <nixpkgs> {} }:
 
 pkgs.mkShell {
-    buildInputs = with upkgs; [
-        zig zls glfw pkgs.epoxy
+    buildInputs = with pkgs; [
+        zig zls glfw epoxy
     ];
 }

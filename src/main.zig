@@ -8,6 +8,9 @@ const CPU = @import("execution.zig");
 
 const Debugger = @import("debugger.zig");
 
+const BootRom = @embedFile("roms/boot.bin");
+const GameRom = @embedFile("roms/game.bin");
+
 // TODO:
 // - Fix timers
 // - Sprite drawing
