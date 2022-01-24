@@ -48,7 +48,7 @@ pub const Window = struct {
 
     window: *glfw.Window,
     program: gl.Program,
-    allocator: *std.mem.Allocator,
+    allocator: std.mem.Allocator,
 
     screen_texture: gl.Texture,
     screen_width: usize,
@@ -59,7 +59,7 @@ pub const Window = struct {
     vertex_buffer: gl.Buffer,
     vertex_count: usize,
 
-    pub fn init(alloc: *std.mem.Allocator, config: WindowConfig) !Self {
+    pub fn init(alloc: std.mem.Allocator, config: WindowConfig) !Self {
         try glfw.init();
 
         // At least version 3.3

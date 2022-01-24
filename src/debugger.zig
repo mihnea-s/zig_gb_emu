@@ -4,9 +4,9 @@ const MMU = @import("memory.zig");
 const PPU = @import("graphics.zig");
 const CPU = @import("execution.zig");
 
-const Window = @import("window.zig").Window;
+const instr = @import("instructions.zig");
 
-usingnamespace @import("instructions.zig");
+const Window = @import("window.zig").Window;
 
 const Self = @This();
 
@@ -19,7 +19,7 @@ ppu: *PPU,
 cpu: *CPU,
 stdin: std.fs.File.Reader,
 stdout: std.fs.File.Writer,
-allocator: *std.mem.Allocator,
+allocator: std.mem.Allocator,
 
 quit: bool,
 broke: bool,
@@ -33,7 +33,7 @@ print_states: struct {
 },
 
 pub fn init(
-    allocator: *std.mem.Allocator,
+    allocator: std.mem.Allocator,
     mmu: *MMU,
     ppu: *PPU,
     cpu: *CPU,
@@ -65,8 +65,8 @@ fn printCPUState(self: *Self) !void {
     const ix = self.mmu.read(u8, self.cpu.registers.pc);
 
     const details = switch (ix) {
-        0xCB => prefixedInstructionsDetails(self.mmu.read(u8, self.cpu.registers.pc + 1)),
-        else => instructionsDetails(ix),
+        0xCB => instr.prefixedInstructionsDetails(self.mmu.read(u8, self.cpu.registers.pc + 1)),
+        else => instr.instructionsDetails(ix),
     } orelse std.debug.panic(
         "Unknown '0x{X:0>2}' @ ${X:0>4}\n",
         .{ ix, self.cpu.registers.pc },
@@ -214,7 +214,7 @@ fn parseCommand(self: *Self) !Command {
         .command = .unknown,
     };
 
-    var spliterator = std.mem.split(input, " ");
+    var spliterator = std.mem.split(u8, input, " ");
 
     while (spliterator.next()) |arg| {
         if (command.command == .unknown) {

@@ -6,7 +6,7 @@ usingnamespace @import("instructions.zig");
 
 const Self = @This();
 
-const TileSide: u8 = 8;
+const TileSide: u4 = 8;
 
 const TileMapAddrs = [2]u16{
     0x9800, // 0 = 9800 -> 9BFF
@@ -51,7 +51,7 @@ const FramebufferHeight = 144;
 const FramebufferSize = FramebufferWidth * FramebufferHeight;
 
 mmu: *MMU,
-allocator: *std.mem.Allocator,
+allocator: std.mem.Allocator,
 framebuffer: *[FramebufferSize]u8,
 
 line: u8,
@@ -60,7 +60,7 @@ dots: usize,
 ready: bool,
 state: PPUState,
 
-pub fn init(mmu: *MMU, allocator: *std.mem.Allocator) !Self {
+pub fn init(mmu: *MMU, allocator: std.mem.Allocator) !Self {
     const framebuffer = try allocator.alloc(u8, FramebufferSize);
 
     return Self{
@@ -179,11 +179,13 @@ fn drawWindowPixelLine(self: *Self) void {
 }
 
 fn readSprite(self: *Self, id: u8) Sprite {
-    return self.mmu.read(Sprite, SpriteTableStart + id);
+    return self.mmu.read(Sprite, SpriteTableStart + @sizeOf(Sprite) * id);
 }
 
 fn drawSpritesPixelLine(self: *Self) void {
     const lcd_control = self.mmu.ioLCDControl();
+
+    const actual_line: usize = self.line + 16;
     const sprite_height: u8 = if (lcd_control.sprites_tall) 16 else 8;
 
     // FIXME drawing tall sprites is broken.
@@ -193,10 +195,13 @@ fn drawSpritesPixelLine(self: *Self) void {
     var sprites_drawn: usize = 0;
 
     while (sprite_id < SpriteTableCapacity) : (sprite_id += 1) {
+        // Do not draw more than 10 sprites per line.
+        if (sprites_drawn >= SpriteLineLimit) break;
+
         const sprite = self.readSprite(sprite_id);
 
-        if (sprite.y_position > self.line + 16) continue;
-        if (sprite.y_position + sprite_height < self.line + 16) continue;
+        if (sprite.y_position > actual_line) continue;
+        if (sprite.y_position + sprite_height <= actual_line) continue;
 
         sprites_drawn += 1;
 
@@ -205,22 +210,17 @@ fn drawSpritesPixelLine(self: *Self) void {
             1 => self.mmu.ioRegister(.spr_palette_1).*,
         };
 
-        var sprx: u8 = 0;
-        const spry = self.line - (sprite.y_position - 16);
+        const spry = @truncate(u4, actual_line - sprite.y_position);
+        var sprx = @intCast(u4, std.math.max(0, TileSide - @intCast(i16, sprite.x_position)));
 
         while (sprx < 8) : (sprx += 1) {
-            const pixel = self.readTilePixel(
-                sprite.tile_index,
-                @intCast(u4, sprx),
-                @intCast(u4, spry),
-                .block_0,
-            );
+            const px = if (sprite.attributes.x_flip == 1) TileSide - 1 - sprx else sprx;
+            const py = if (sprite.attributes.y_flip == 1) TileSide - 1 - spry else spry;
 
-            const pixel_x = sprite.x_position + sprx;
+            const pixel = self.readTilePixel(sprite.tile_index, px, py, .block_0);
+            const pixel_x = sprite.x_position + sprx - 8;
 
-            if (pixel_x < 8) continue;
-
-            const fb_index = @intCast(usize, self.line) * FramebufferWidth + pixel_x - 8;
+            const fb_index = @intCast(usize, self.line) * FramebufferWidth + pixel_x;
             self.framebuffer[fb_index] = pixelColor(palette, pixel);
         }
     }

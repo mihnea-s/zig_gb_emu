@@ -1,6 +1,13 @@
 const std = @import("std");
 
-usingnamespace @import("instructions.zig");
+const instr = @import("instructions.zig");
+
+const Interrupt = instr.Interrupt;
+const LCDStatus = instr.LCDStatus;
+const LCDControl = instr.LCDControl;
+const Controller = instr.Controller;
+const TimerControl = instr.TimerControl;
+const InterruptFlags = instr.InterruptFlags;
 
 const Self = @This();
 
@@ -51,7 +58,7 @@ const HighEnd = 0xFFFF;
 const HighSize = 1 + HighEnd - HighStart;
 
 cartridge: []const u8,
-allocator: *std.mem.Allocator,
+allocator: std.mem.Allocator,
 
 bootloader: *const [BootSize]u8,
 rom_bank_0: *const [RomBank0Size]u8,
@@ -67,7 +74,7 @@ input_output: *[IOSize]u8,
 high_ram: *[HighSize]u8,
 
 pub fn init(
-    allocator: *std.mem.Allocator,
+    allocator: std.mem.Allocator,
     bootrom: []const u8,
     cartridge: []const u8,
 ) !Self {
@@ -98,8 +105,8 @@ pub fn init(
         .allocator = allocator,
 
         .bootloader = bootrom[0..BootSize],
-        .rom_bank_0 = cartridge[RomBank0Start..RomBank0End+1][0..RomBank0Size],
-        .rom_bank_n = cartridge[RomBankNStart..RomBankNEnd+1][0..RomBankNSize],
+        .rom_bank_0 = cartridge[RomBank0Start .. RomBank0End + 1][0..RomBank0Size],
+        .rom_bank_n = cartridge[RomBankNStart .. RomBankNEnd + 1][0..RomBankNSize],
 
         .extern_ram_bank = 0,
         .extern_ram = extern_ram,
@@ -160,7 +167,7 @@ fn mapReadAddress(self: *Self, addr: u16) *const u8 {
     };
 }
 
-fn controlMemoryBank(self: *Self, addr: u16, value: u8) void {
+fn controlMemoryBank(_: *Self, _: u16, _: u8) void {
     // TODO
 }
 

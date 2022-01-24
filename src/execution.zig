@@ -1,8 +1,13 @@
 const std = @import("std");
 
-const MMU = @import("memory.zig");
+const instr = @import("instructions.zig");
 
-usingnamespace @import("instructions.zig");
+const Interrupt = instr.Interrupt;
+const Registers = instr.Registers;
+const Instruction = instr.Instruction;
+const FlagRegister = instr.FlagRegister;
+
+const MMU = @import("memory.zig");
 
 const Self = @This();
 
@@ -53,14 +58,14 @@ const IxCondition = enum {
 };
 
 mmu: *MMU,
-allocator: *std.mem.Allocator,
+allocator: std.mem.Allocator,
 
 registers: Registers,
 pseudorng: PseudoRNG,
 timer_div_clock: usize,
 timer_conf_clock: usize,
 
-pub fn init(mmu: *MMU, allocator: *std.mem.Allocator) !Self {
+pub fn init(mmu: *MMU, allocator: std.mem.Allocator) !Self {
     return Self{
         .mmu = mmu,
         .allocator = allocator,
@@ -72,7 +77,7 @@ pub fn init(mmu: *MMU, allocator: *std.mem.Allocator) !Self {
     };
 }
 
-pub fn deinit(self: *Self) void {}
+pub fn deinit(_: *Self) void {}
 
 fn flags(self: *Self) *FlagRegister {
     return &self.registers.af.ind.f;
@@ -455,7 +460,7 @@ pub fn stepInstruction(self: *Self) usize {
         return self.stepPrefixedInstruction();
     }
 
-    const details = instructionsDetails(ix) orelse std.debug.panic(
+    const details = instr.instructionsDetails(ix) orelse std.debug.panic(
         "Unknown '0x{X:0>2}' @ ${X:0>4}\n",
         .{ ix, self.registers.pc },
     );
@@ -869,7 +874,7 @@ fn bitClear(self: *Self, comptime bit: u3, comptime arg: IxArgument) void {
 fn stepPrefixedInstruction(self: *Self) usize {
     const ix = self.mmu.read(u8, self.registers.pc);
 
-    const details = prefixedInstructionsDetails(ix) orelse std.debug.panic(
+    const details = instr.prefixedInstructionsDetails(ix) orelse std.debug.panic(
         "Unknown '0xCB 0x{X:0>2}' @ ${X:0>4}\n",
         .{ ix, self.registers.pc },
     );

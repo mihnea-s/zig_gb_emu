@@ -23,21 +23,21 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var mmu = try MMU.init(&gpa.allocator, BootRom, GameRom);
+    var mmu = try MMU.init(gpa.allocator(), BootRom, GameRom);
     defer mmu.deinit();
 
-    var ppu = try PPU.init(&mmu, &gpa.allocator);
+    var ppu = try PPU.init(&mmu, gpa.allocator());
     defer ppu.deinit();
 
-    var cpu = try CPU.init(&mmu, &gpa.allocator);
+    var cpu = try CPU.init(&mmu, gpa.allocator());
     defer cpu.deinit();
 
     if (std.os.argv.len > 1) {
-        try Debugger.init(&gpa.allocator, &mmu, &ppu, &cpu).debug();
+        try Debugger.init(gpa.allocator(), &mmu, &ppu, &cpu).debug();
         return;
     }
 
-    var win = try window.Window.init(&gpa.allocator, .{});
+    var win = try window.Window.init(gpa.allocator(), .{});
     defer win.deinit();
 
     // Set the game title to the window title.

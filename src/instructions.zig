@@ -4,7 +4,7 @@ const std = @import("std");
 /// (also called t-cycles) per second.
 ///
 /// `1 Mhz = 10 ** 6 Clocks per second`
-pub const Speed = comptime try std.math.powi(usize, 10, 6);
+pub const Speed = std.math.powi(usize, 10, 6) catch @compileError("TODO");
 
 pub const FlagRegister = packed struct {
     unused: u4 = 0, // lower nibble of the flag register
@@ -95,7 +95,7 @@ pub const InterruptFlags = packed struct {
     unused: u4,
 
     pub fn isSet(self: *@This(), comptime irrpt: Interrupt) bool {
-        return @field(self, comptime switch (irrpt) {
+        return @field(self, switch (irrpt) {
             .v_blank => "v_blank",
             .lcd_status => "lcd_status",
             .timer => "timer",
@@ -105,7 +105,7 @@ pub const InterruptFlags = packed struct {
     }
 
     pub fn set(self: *@This(), comptime irrpt: Interrupt, value: bool) void {
-        @field(self, comptime switch (irrpt) {
+        @field(self, switch (irrpt) {
             .v_blank => "v_blank",
             .lcd_status => "lcd_status",
             .timer => "timer",
