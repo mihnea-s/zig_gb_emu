@@ -188,9 +188,6 @@ fn drawSpritesPixelLine(self: *Self) void {
     const actual_line: usize = self.line + 16;
     const sprite_height: u8 = if (lcd_control.sprites_tall) 16 else 8;
 
-    // FIXME drawing tall sprites is broken.
-    if (lcd_control.sprites_tall) return;
-
     var sprite_id: u8 = 0;
     var sprites_drawn: usize = 0;
 
